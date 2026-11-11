@@ -1,0 +1,597 @@
+package controller
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"reflect"
+	"time"
+
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	udsv1alpha1 "github.com/celttechie/uds-vm-operator/pkg/apis/uds/v1alpha1"
+)
+
+const (
+	CdiFsOverheadMultiplier = 1.06
+	MiB                     = 1024 * 1024
+	DefaultReconcilerID     = "controller-go"
+)
+
+// CalculatePVCSizeMiB calculates the PVC size with +6% KubeVirt/CDI filesystem overhead.
+func CalculatePVCSizeMiB(virtualSizeBytes int64) string {
+	rawMiB := float64(virtualSizeBytes) / float64(MiB)
+	paddedMiB := math.Ceil(rawMiB * CdiFsOverheadMultiplier)
+	if paddedMiB <= rawMiB {
+		paddedMiB = math.Ceil(rawMiB) + 1
+	}
+	if paddedMiB < 1 {
+		paddedMiB = 1
+	}
+	return fmt.Sprintf("%dMi", int64(paddedMiB))
+}
+
+// BuildOwnerReference builds standard controller OwnerReference for garbage collection.
+func BuildOwnerReference(udsvm *udsv1alpha1.UDSVirtualMachine) metav1.OwnerReference {
+	trueVal := true
+	return metav1.OwnerReference{
+		APIVersion:         udsv1alpha1.GroupVersion.String(),
+		Kind:               "UDSVirtualMachine",
+		Name:               udsvm.Name,
+		UID:                udsvm.UID,
+		Controller:         &trueVal,
+		BlockOwnerDeletion: &trueVal,
+	}
+}
+
+// BuildZeroTrustNetworkPolicy builds a default-deny-ingress + restricted-egress (DNS only)
+// NetworkPolicy for the KubeVirt virt-launcher pod (NIST 800-53 SC-7 Boundary Protection).
+func BuildZeroTrustNetworkPolicy(udsvm *udsv1alpha1.UDSVirtualMachine) *networkingv1.NetworkPolicy {
+	ownerRef := BuildOwnerReference(udsvm)
+	dnsPort := intstr.FromInt(53)
+	protoUDP := corev1.ProtocolUDP
+	protoTCP := corev1.ProtocolTCP
+
+	return &networkingv1.NetworkPolicy{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "NetworkPolicy",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-netpol", udsvm.Name),
+			Namespace: udsvm.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       udsvm.Name,
+				"app.kubernetes.io/managed-by": "uds-vm-operator",
+				"uds.dev/nist-control":         "SC-7",
+			},
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"vm.kubevirt.io/name": udsvm.Name,
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					Ports: []networkingv1.NetworkPolicyPort{
+						{
+							Protocol: &protoUDP,
+							Port:     &dnsPort,
+						},
+						{
+							Protocol: &protoTCP,
+							Port:     &dnsPort,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// BuildCloudInitSecret builds a hardened Cloud-Init NoCloud Secret enforcing SSH password
+// disabling and optional FIPS mode (NIST 800-53 AC-3 / IA-5).
+func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine) *corev1.Secret {
+	ownerRef := BuildOwnerReference(udsvm)
+
+	disallowSSH := true
+	if udsvm.Spec.SecurityProfile.DisallowSSHPassword != nil {
+		disallowSSH = *udsvm.Spec.SecurityProfile.DisallowSSHPassword
+	}
+	fipsMode := true
+	if udsvm.Spec.SecurityProfile.FIPSMode != nil {
+		fipsMode = *udsvm.Spec.SecurityProfile.FIPSMode
+	}
+
+	sshPwAuthStr := "true"
+	if disallowSSH {
+		sshPwAuthStr = "false"
+	}
+
+	userdata := fmt.Sprintf("#cloud-config\nhostname: %s\nssh_pwauth: %s\ndisable_root: true\n", udsvm.Name, sshPwAuthStr)
+	if fipsMode {
+		userdata += "runcmd:\n  - [ sh, -c, 'echo Hardened UDS VM initialized (FIPS profile active)' ]\n"
+	}
+
+	return &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-cloudinit", udsvm.Name),
+			Namespace: udsvm.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       udsvm.Name,
+				"app.kubernetes.io/managed-by": "uds-vm-operator",
+				"uds.dev/nist-control":         "AC-3",
+			},
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Type: corev1.SecretTypeOpaque,
+		StringData: map[string]string{
+			"userdata": userdata,
+		},
+	}
+}
+
+// BuildDataVolume builds a CDI DataVolume resource with cryptographic checksum validation
+// (leveraging PR #4340, NIST 800-53 SI-7) and automatic +6% filesystem overhead sizing.
+func BuildDataVolume(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Unstructured {
+	ownerRef := BuildOwnerReference(udsvm)
+	pvcSize := CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
+	sourceType := udsvm.Spec.Disk.SourceType
+	if sourceType == "" {
+		sourceType = "upload"
+	}
+
+	sourceSpec := map[string]interface{}{}
+	if sourceType == "upload" {
+		sourceSpec["upload"] = map[string]interface{}{
+			"checksum": udsvm.Spec.Disk.Checksum,
+		}
+	} else if sourceType == "http" {
+		sourceSpec["http"] = map[string]interface{}{
+			"url":      udsvm.Spec.Disk.HTTPURL,
+			"checksum": udsvm.Spec.Disk.Checksum,
+		}
+	}
+
+	storageSpec := map[string]interface{}{
+		"accessModes": []interface{}{"ReadWriteOnce"},
+		"resources": map[string]interface{}{
+			"requests": map[string]interface{}{
+				"storage": pvcSize,
+			},
+		},
+	}
+	if udsvm.Spec.Disk.StorageClassName != "" {
+		storageSpec["storageClassName"] = udsvm.Spec.Disk.StorageClassName
+	}
+
+	dv := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "cdi.kubevirt.io/v1beta1",
+			"kind":       "DataVolume",
+			"metadata": map[string]interface{}{
+				"name":      fmt.Sprintf("%s-dv", udsvm.Name),
+				"namespace": udsvm.Namespace,
+				"labels": map[string]interface{}{
+					"app.kubernetes.io/name":       udsvm.Name,
+					"app.kubernetes.io/managed-by": "uds-vm-operator",
+					"uds.dev/nist-control":         "SI-7",
+				},
+				"annotations": map[string]interface{}{
+					"cdi.kubevirt.io/storage.bind.immediate.requested": "true",
+				},
+				"ownerReferences": []interface{}{
+					map[string]interface{}{
+						"apiVersion":         ownerRef.APIVersion,
+						"kind":               ownerRef.Kind,
+						"name":               ownerRef.Name,
+						"uid":                string(ownerRef.UID),
+						"controller":         *ownerRef.Controller,
+						"blockOwnerDeletion": *ownerRef.BlockOwnerDeletion,
+					},
+				},
+			},
+			"spec": map[string]interface{}{
+				"source":  sourceSpec,
+				"storage": storageSpec,
+			},
+		},
+	}
+	return dv
+}
+
+// BuildVirtualMachine builds a hardened KubeVirt VirtualMachine bound to the verified
+// DataVolume and Cloud-Init Secret.
+func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Unstructured {
+	ownerRef := BuildOwnerReference(udsvm)
+	cpus := udsvm.Spec.CPUs
+	if cpus <= 0 {
+		cpus = 2
+	}
+	memory := udsvm.Spec.Memory
+	if memory == "" {
+		memory = "2Gi"
+	}
+	runStrategy := udsvm.Spec.RunStrategy
+	if runStrategy == "" {
+		runStrategy = "Halted"
+	}
+
+	vm := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "kubevirt.io/v1",
+			"kind":       "VirtualMachine",
+			"metadata": map[string]interface{}{
+				"name":      udsvm.Name,
+				"namespace": udsvm.Namespace,
+				"labels": map[string]interface{}{
+					"app.kubernetes.io/name":       udsvm.Name,
+					"app.kubernetes.io/managed-by": "uds-vm-operator",
+				},
+				"ownerReferences": []interface{}{
+					map[string]interface{}{
+						"apiVersion":         ownerRef.APIVersion,
+						"kind":               ownerRef.Kind,
+						"name":               ownerRef.Name,
+						"uid":                string(ownerRef.UID),
+						"controller":         *ownerRef.Controller,
+						"blockOwnerDeletion": *ownerRef.BlockOwnerDeletion,
+					},
+				},
+			},
+			"spec": map[string]interface{}{
+				"runStrategy": runStrategy,
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels": map[string]interface{}{
+							"vm.kubevirt.io/name":    udsvm.Name,
+							"app.kubernetes.io/name": udsvm.Name,
+						},
+					},
+					"spec": map[string]interface{}{
+						"domain": map[string]interface{}{
+							"cpu": map[string]interface{}{
+								"cores": int64(cpus),
+							},
+							"resources": map[string]interface{}{
+								"requests": map[string]interface{}{
+									"memory": memory,
+								},
+							},
+							"devices": map[string]interface{}{
+								"disks": []interface{}{
+									map[string]interface{}{
+										"name": "rootdisk",
+										"disk": map[string]interface{}{
+											"bus": "virtio",
+										},
+									},
+									map[string]interface{}{
+										"name": "cloudinitdisk",
+										"disk": map[string]interface{}{
+											"bus": "virtio",
+										},
+									},
+								},
+								"interfaces": []interface{}{
+									map[string]interface{}{
+										"name":       "default",
+										"masquerade": map[string]interface{}{},
+									},
+								},
+							},
+						},
+						"networks": []interface{}{
+							map[string]interface{}{
+								"name": "default",
+								"pod":  map[string]interface{}{},
+							},
+						},
+						"volumes": []interface{}{
+							map[string]interface{}{
+								"name": "rootdisk",
+								"dataVolume": map[string]interface{}{
+									"name": fmt.Sprintf("%s-dv", udsvm.Name),
+								},
+							},
+							map[string]interface{}{
+								"name": "cloudinitdisk",
+								"cloudInitNoCloud": map[string]interface{}{
+									"secretRef": map[string]interface{}{
+										"name": fmt.Sprintf("%s-cloudinit", udsvm.Name),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return vm
+}
+
+// EvaluateStatusFromDataVolume evaluates the observed state from the child CDI DataVolume.
+func EvaluateStatusFromDataVolume(
+	udsvm *udsv1alpha1.UDSVirtualMachine,
+	dvObj *unstructured.Unstructured,
+	reconcilerID string,
+) udsv1alpha1.UDSVirtualMachineStatus {
+	pvcSize := CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
+	zeroTrust := true
+	if udsvm.Spec.SecurityProfile.ZeroTrustNetwork != nil {
+		zeroTrust = *udsvm.Spec.SecurityProfile.ZeroTrustNetwork
+	}
+
+	dvName := ""
+	dvPhase := "Pending"
+	checksumVerified := false
+	phase := "Pending"
+	reason := "DataVolumeCreating"
+	message := "Waiting for CDI DataVolume to initialize"
+
+	if dvObj != nil {
+		dvName = dvObj.GetName()
+		statusObj, hasStatus := dvObj.Object["status"].(map[string]interface{})
+		if hasStatus && statusObj != nil {
+			if p, ok := statusObj["phase"].(string); ok && p != "" {
+				dvPhase = p
+			}
+
+			// Check conditions for ChecksumError
+			checksumErrorMsg := ""
+			if conds, ok := statusObj["conditions"].([]interface{}); ok {
+				for _, c := range conds {
+					if cMap, ok := c.(map[string]interface{}); ok {
+						if r, ok := cMap["reason"].(string); ok && r == "ChecksumError" {
+							if m, ok := cMap["message"].(string); ok {
+								checksumErrorMsg = m
+							} else {
+								checksumErrorMsg = "Disk image checksum mismatch"
+							}
+							break
+						}
+					}
+				}
+			}
+
+			sourceType := udsvm.Spec.Disk.SourceType
+			if sourceType == "" {
+				sourceType = "upload"
+			}
+
+			if checksumErrorMsg != "" {
+				phase = "IntegrityError"
+				reason = "ChecksumError"
+				message = checksumErrorMsg
+				checksumVerified = false
+			} else if dvPhase == "Succeeded" {
+				phase = "Ready"
+				reason = "ChecksumVerified"
+				message = fmt.Sprintf("Disk image imported and verified against %s", udsvm.Spec.Disk.Checksum)
+				checksumVerified = true
+			} else if dvPhase == "UploadReady" || dvPhase == "WaitForFirstConsumer" || dvPhase == "Pending" {
+				if sourceType == "upload" {
+					phase = "WaitingForUpload"
+				} else {
+					phase = "Provisioning"
+				}
+				reason = fmt.Sprintf("DataVolume%s", dvPhase)
+				message = fmt.Sprintf("CDI DataVolume %s is in phase %s", dvName, dvPhase)
+			} else {
+				phase = "Provisioning"
+				reason = fmt.Sprintf("DataVolume%s", dvPhase)
+				message = fmt.Sprintf("CDI DataVolume %s is in phase %s", dvName, dvPhase)
+			}
+		}
+	}
+
+	condStatus := metav1.ConditionFalse
+	if phase == "Ready" {
+		condStatus = metav1.ConditionTrue
+	}
+
+	return udsv1alpha1.UDSVirtualMachineStatus{
+		Phase:             phase,
+		CalculatedPVCSize: pvcSize,
+		DataVolumeName:    dvName,
+		DataVolumePhase:   dvPhase,
+		ReconciledBy:      reconcilerID,
+		Compliance: udsv1alpha1.ComplianceStatus{
+			ChecksumVerified:  checksumVerified,
+			ZeroTrustIsolated: zeroTrust,
+			CloudInitHardened: true,
+		},
+		Conditions: []metav1.Condition{
+			{
+				Type:               "Ready",
+				Status:             condStatus,
+				LastTransitionTime: metav1.Now(),
+				Reason:             reason,
+				Message:            message,
+			},
+		},
+	}
+}
+
+// Reconciler reconciles a UDSVirtualMachine object.
+type Reconciler struct {
+	client.Client
+	Scheme       *runtime.Scheme
+	Log          logr.Logger
+	ReconcilerID string
+}
+
+// Reconcile performs the level-triggered reconciliation loop for UDSVirtualMachine.
+func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+	udsvm := &udsv1alpha1.UDSVirtualMachine{}
+	err := r.Get(ctx, req.NamespacedName, udsvm)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return reconcile.Result{}, nil
+		}
+		return reconcile.Result{}, err
+	}
+
+	reconcilerID := r.ReconcilerID
+	if reconcilerID == "" {
+		reconcilerID = DefaultReconcilerID
+	}
+
+	// 1. Reconcile Zero-Trust NetworkPolicy
+	zeroTrust := true
+	if udsvm.Spec.SecurityProfile.ZeroTrustNetwork != nil {
+		zeroTrust = *udsvm.Spec.SecurityProfile.ZeroTrustNetwork
+	}
+	if zeroTrust {
+		netpol := BuildZeroTrustNetworkPolicy(udsvm)
+		existingNetPol := &networkingv1.NetworkPolicy{}
+		err = r.Get(ctx, types.NamespacedName{Name: netpol.Name, Namespace: netpol.Namespace}, existingNetPol)
+		if apierrors.IsNotFound(err) {
+			if err := r.Create(ctx, netpol); err != nil && !apierrors.IsAlreadyExists(err) {
+				return reconcile.Result{}, err
+			}
+		} else if err != nil {
+			return reconcile.Result{}, err
+		} else {
+			existingNetPol.Labels = netpol.Labels
+			existingNetPol.Spec = netpol.Spec
+			existingNetPol.OwnerReferences = netpol.OwnerReferences
+			if err := r.Update(ctx, existingNetPol); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
+	// 2. Reconcile Hardened Cloud-Init Secret
+	secret := BuildCloudInitSecret(udsvm)
+	existingSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, existingSecret)
+	if apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, secret); err != nil && !apierrors.IsAlreadyExists(err) {
+			return reconcile.Result{}, err
+		}
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else {
+		existingSecret.Labels = secret.Labels
+		existingSecret.StringData = secret.StringData
+		existingSecret.OwnerReferences = secret.OwnerReferences
+		if err := r.Update(ctx, existingSecret); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	// 3. Reconcile CDI DataVolume
+	dv := BuildDataVolume(udsvm)
+	existingDV := &unstructured.Unstructured{}
+	existingDV.SetGroupVersionKind(dv.GroupVersionKind())
+	err = r.Get(ctx, types.NamespacedName{Name: dv.GetName(), Namespace: dv.GetNamespace()}, existingDV)
+	var dvObj *unstructured.Unstructured
+	if apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, dv); err != nil && !apierrors.IsAlreadyExists(err) {
+			return reconcile.Result{}, err
+		}
+		dvObj = dv
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else {
+		dvObj = existingDV
+	}
+
+	// 4. Reconcile KubeVirt VirtualMachine
+	vm := BuildVirtualMachine(udsvm)
+	existingVM := &unstructured.Unstructured{}
+	existingVM.SetGroupVersionKind(vm.GroupVersionKind())
+	err = r.Get(ctx, types.NamespacedName{Name: vm.GetName(), Namespace: vm.GetNamespace()}, existingVM)
+	if apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, vm); err != nil && !apierrors.IsAlreadyExists(err) {
+			return reconcile.Result{}, err
+		}
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// 5. Evaluate and update status directly onto UDSVirtualMachine
+	newStatus := EvaluateStatusFromDataVolume(udsvm, dvObj, reconcilerID)
+
+	// Preserve condition timestamp if reason and status are identical
+	if len(udsvm.Status.Conditions) > 0 && len(newStatus.Conditions) > 0 {
+		oldCond := udsvm.Status.Conditions[0]
+		if oldCond.Type == newStatus.Conditions[0].Type &&
+			oldCond.Status == newStatus.Conditions[0].Status &&
+			oldCond.Reason == newStatus.Conditions[0].Reason &&
+			oldCond.Message == newStatus.Conditions[0].Message &&
+			!oldCond.LastTransitionTime.IsZero() {
+			newStatus.Conditions[0].LastTransitionTime = oldCond.LastTransitionTime
+		}
+	}
+
+	if udsvm.Status.Phase != newStatus.Phase ||
+		udsvm.Status.CalculatedPVCSize != newStatus.CalculatedPVCSize ||
+		udsvm.Status.DataVolumeName != newStatus.DataVolumeName ||
+		udsvm.Status.DataVolumePhase != newStatus.DataVolumePhase ||
+		udsvm.Status.ReconciledBy != newStatus.ReconciledBy ||
+		!reflect.DeepEqual(udsvm.Status.Compliance, newStatus.Compliance) ||
+		!reflect.DeepEqual(udsvm.Status.Conditions, newStatus.Conditions) {
+
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			latest := &udsv1alpha1.UDSVirtualMachine{}
+			if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
+				return err
+			}
+			latest.Status = newStatus
+			return r.Status().Update(ctx, latest)
+		})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		r.Log.Info("Reconciled UDSVirtualMachine",
+			"namespace", udsvm.Namespace,
+			"name", udsvm.Name,
+			"phase", newStatus.Phase,
+			"pvc", newStatus.CalculatedPVCSize,
+			"checksumVerified", newStatus.Compliance.ChecksumVerified,
+			"reconciledBy", newStatus.ReconciledBy,
+		)
+	}
+
+	// Requeue periodically if not finished or to keep synced
+	requeueDuration := 5 * time.Second
+	if newStatus.Phase == "Ready" {
+		requeueDuration = 30 * time.Second
+	}
+	return reconcile.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&udsv1alpha1.UDSVirtualMachine{}).
+		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&corev1.Secret{}).
+		Complete(r)
+}

@@ -1,0 +1,24 @@
+apiVersion: uds.dev/v1alpha1
+kind: UDSVirtualMachine
+metadata:
+  name: tactical-sensor-vm
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tactical-sensor-vm
+    app.kubernetes.io/managed-by: uds-vm-prep
+    uds.dev/security-tier: mission-critical
+  annotations:
+    uds.dev/source-image: tactical-sensor.raw
+    uds.dev/estimated-pvc-size: 11Mi
+spec:
+  cpus: 1
+  memory: 512Mi
+  disk:
+    sourceType: upload
+    format: raw
+    virtualSizeBytes: 10485760
+    checksum: sha256:e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+  securityProfile:
+    zeroTrustNetwork: true
+    disallowSSHPassword: true
+    fipsMode: true
