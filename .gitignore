@@ -21,4 +21,5 @@ venv/
 # IDE
 .idea/
 .vscode/
-
+# Zarf packages
+zarf-package-*.tar.zst

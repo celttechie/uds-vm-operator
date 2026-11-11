@@ -51,30 +51,26 @@ We are deliberately executing a **two-stage operator engineering workflow**:
 
 ---
 
-## 4. Remaining Steps to Execute Next
+## 4. Completed Milestones
 
-### Step 1: Live Cluster Validation of Phase 1 (Python `kopf` Operator)
-1. Apply the updated CRD to the K3s cluster:
-   ```bash
-   export KUBECONFIG=/home/bjarrett/Projects/kubevirt-dev-platform/kubeconfig
-   kubectl apply -f manifests/crd/udsvirtualmachines.uds.dev.yaml
-   ```
-2. Start the `kopf` operator in the background (or terminal):
-   ```bash
-   .venv/bin/kopf run --namespace=default prototype-kopf/operator_kopf.py
-   ```
-3. Apply `manifests/examples/tactical-sensor-vm.yaml` and inspect `kubectl get udsvm`:
-   - Verify `Phase: WaitingForUpload`, `PVC-Size: 11Mi`, `Zero-Trust: true`, `Reconciler: kopf-python`.
-4. Upload `/tmp/test-disk.raw` via `virtctl image-upload`:
-   ```bash
-   ssh -F /home/bjarrett/Projects/kubevirt-dev-platform/.ssh/config kubevirt-sandbox \
-     "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml virtctl image-upload dv tactical-sensor-vm-dv --no-create --image-path=/tmp/test-disk.raw --uploadproxy-url=https://127.0.0.1:31001 --insecure"
-   ```
-5. Verify `kubectl get udsvm` transitions to `Phase: Ready` and `Checksum-Verified: true`.
+- **v0.1.0 — Core Operator & CDI Checksum Integrity (PR #1):**
+  - Upstream CDI PR #4340 integration, zero-trust NetworkPolicy (SC-7), Cloud-Init hardened secret (AC-3), +6% filesystem overhead math, seamless controller takeover.
+- **v0.2.0 — Windows Automation & DISA STIG Hardening (PR #5):**
+  - Hyper-V enlightenments, UEFI Secure Boot, vTPM 2.0, VirtIO storage driver auto-injection, zero-touch Sysprep `Autounattend.xml` answer-file generation, NIST IA-5 random admin credentials.
+  - Successfully validated unattended Windows Server 2022 installation on live KubeVirt cluster (`tactical-windows-vm` reached logon screen).
+- **v0.3.0 — Go CLI (`uds-vmctl`) & Zarf Air-Gap Packaging (PR #7 / Issue #6):**
+  - Implemented standalone CLI `uds-vmctl` in Go (`prep`, `power`, `inventory`, `version`).
+  - Standalone binary QCOW2 and RAW disk inspection without python or qemu-img.
+  - Strict air-gap violation check (rejects external backing chains).
+  - Defense Unicorns Zarf package definition (`zarf.yaml`) bundling CRDs, Operator deployment & RBAC, pre-validated Golden OS image fixtures, and sample workloads.
 
-### Step 2: Phase 2 — 1:1 Conversion to Go (`pkg/` & `cmd/`)
-1. Initialize `go.mod` (`github.com/celttechie/uds-vm-operator`) with `k8s.io/apimachinery`, `k8s.io/client-go`, and `sigs.k8s.io/controller-runtime`.
-2. Implement `pkg/controller/reconciler.go` translating the 4 resource builders (`BuildZeroTrustNetworkPolicy`, `BuildCloudInitSecret`, `BuildDataVolume`, `BuildVirtualMachine`), overhead math (`CalculatePVCSizeMiB`), and `Reconcile(ctx, req)` loop (`reconciledBy: "controller-go"`).
-3. Implement `pkg/controller/reconciler_test.go` mirroring the 7 unit tests in `prototype-kopf/test_operator_kopf.py` and run `go test -v ./...`.
-4. Implement `cmd/uds-vm-operator/main.go`, build `bin/uds-vm-operator`, stop the Python Kopf process, and run `bin/uds-vm-operator` against the live K3s cluster to verify seamless controller takeover (`Reconciler: controller-go`).
-5. Create `README.md` with a side-by-side comparison of the Python Kopf PoC vs. Production Go Controller.
+---
+
+## 5. Next Planned Milestone: v0.4.0
+
+- **Defense Unicorns Lula OSCAL cATO Integration:**
+  - Machine-readable OSCAL component definition (`compliance/oscal-component.yaml`) mapping controls `SC-7`, `AC-3`, `SI-7`, `IA-5`.
+  - Automated `lula validate` evaluation generating cryptographically signed `assessment-results.yaml`.
+- **Prometheus Observability & Grafana Dashboard:**
+  - Custom metrics exporting real-time STIG compliance posture gauges, storage overhead ratios, and reconciliation status.
+
