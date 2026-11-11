@@ -125,10 +125,16 @@ def build_windows_autounattend_xml(name: str, admin_password: Optional[str] = No
     <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <DriverPaths>
         <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-          <Path>D:\\</Path>
+          <Path>F:\\amd64\\2k22</Path>
         </PathAndCredentials>
         <PathAndCredentials wcm:action="add" wcm:keyValue="2">
-          <Path>E:\\</Path>
+          <Path>F:\\NetKVM\\2k22\\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+          <Path>F:\\Balloon\\2k22\\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+          <Path>F:\\vioserial\\2k22\\amd64</Path>
         </PathAndCredentials>
       </DriverPaths>
     </component>
@@ -177,6 +183,12 @@ def build_windows_autounattend_xml(name: str, admin_password: Optional[str] = No
       </DiskConfiguration>
       <ImageInstall>
         <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/INDEX</Key>
+              <Value>2</Value>
+            </MetaData>
+          </InstallFrom>
           <InstallTo>
             <DiskID>0</DiskID>
             <PartitionID>3</PartitionID>
@@ -217,7 +229,7 @@ def build_windows_autounattend_xml(name: str, admin_password: Optional[str] = No
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\\,E:\\ -Filter 'qemu-ga-x86_64.msi' -Recurse | ForEach-Object {{ Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }}"</CommandLine>
+          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\\,E:\\,F:\\ -Filter 'qemu-ga-x86_64.msi' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {{ Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }}"</CommandLine>
           <Description>Install QEMU Guest Agent</Description>
         </SynchronousCommand>
       </FirstLogonCommands>
@@ -391,8 +403,9 @@ def build_virtual_machine(
                 enable_secure_boot_tpm = bool(win_profile["enableSecureBootTPM"])
 
     disk_format = spec.get("disk", {}).get("format", "raw")
+    is_iso = disk_format == "iso"
     root_disk_obj: Dict[str, Any] = {"name": "rootdisk"}
-    if disk_format == "iso":
+    if is_iso:
         root_disk_obj["cdrom"] = {"bus": "sata"}
         root_disk_obj["bootOrder"] = 1
     else:
@@ -404,6 +417,13 @@ def build_virtual_machine(
     volumes: List[Dict[str, Any]] = [
         {"name": "rootdisk", "dataVolume": {"name": f"{name}-dv"}},
     ]
+
+    if is_iso:
+        disks.append({"name": "installdisk", "disk": {"bus": disk_bus}})
+        volumes.append({
+            "name": "installdisk",
+            "emptyDisk": {"capacity": "40Gi"}
+        })
 
     if is_windows:
         sysprep_secret_name = win_profile.get("sysprepSecretRef") or f"{name}-cloudinit"

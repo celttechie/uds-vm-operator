@@ -253,10 +253,16 @@ func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPass
     <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <DriverPaths>
         <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-          <Path>D:\</Path>
+          <Path>F:\amd64\2k22</Path>
         </PathAndCredentials>
         <PathAndCredentials wcm:action="add" wcm:keyValue="2">
-          <Path>E:\</Path>
+          <Path>F:\NetKVM\2k22\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+          <Path>F:\Balloon\2k22\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+          <Path>F:\vioserial\2k22\amd64</Path>
         </PathAndCredentials>
       </DriverPaths>
     </component>
@@ -305,6 +311,12 @@ func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPass
       </DiskConfiguration>
       <ImageInstall>
         <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/INDEX</Key>
+              <Value>2</Value>
+            </MetaData>
+          </InstallFrom>
           <InstallTo>
             <DiskID>0</DiskID>
             <PartitionID>3</PartitionID>
@@ -345,7 +357,7 @@ func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPass
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\,E:\ -Filter 'qemu-ga-x86_64.msi' -Recurse | ForEach-Object { Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }"</CommandLine>
+          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\,E:\,F:\ -Filter 'qemu-ga-x86_64.msi' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }"</CommandLine>
           <Description>Install QEMU Guest Agent</Description>
         </SynchronousCommand>
       </FirstLogonCommands>
@@ -478,7 +490,8 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 	rootDiskObj := map[string]interface{}{
 		"name": "rootdisk",
 	}
-	if udsvm.Spec.Disk.Format == "iso" {
+	isISO := udsvm.Spec.Disk.Format == "iso"
+	if isISO {
 		rootDiskObj["cdrom"] = map[string]interface{}{
 			"bus": "sata",
 		}
@@ -499,6 +512,22 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 				"name": fmt.Sprintf("%s-dv", udsvm.Name),
 			},
 		},
+	}
+
+	if isISO {
+		// When booting from an installation ISO, attach an installation target hard drive for the guest OS
+		disks = append(disks, map[string]interface{}{
+			"name": "installdisk",
+			"disk": map[string]interface{}{
+				"bus": diskBus,
+			},
+		})
+		volumes = append(volumes, map[string]interface{}{
+			"name": "installdisk",
+			"emptyDisk": map[string]interface{}{
+				"capacity": "40Gi",
+			},
+		})
 	}
 
 	if isWindows {

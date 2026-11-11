@@ -251,6 +251,31 @@ def test_windows_sysprep_and_credentials():
     sec = build_cloudinit_secret("custom-win", "default", custom_spec, owner_ref, admin_password="CustomP@ssw0rd!2026")
     xml = sec["stringData"]["autounattend.xml"]
     assert "<Value>CustomP@ssw0rd!2026</Value>" in xml
-    assert "<Path>D:\\</Path>" in xml
+    assert "<Path>F:\\amd64\\2k22</Path>" in xml
     assert "qemu-ga-x86_64.msi" in xml
+
+
+def test_windows_iso_installation_disk_attachment():
+    iso_spec = {
+        "osType": "windows",
+        "disk": {
+            "sourceType": "upload",
+            "format": "iso"
+        },
+        "windowsProfile": {
+            "diskBus": "virtio"
+        }
+    }
+    owner_ref = {"apiVersion": "uds.dev/v1alpha1", "kind": "UDSVirtualMachine", "name": "tactical-iso-win", "uid": "123"}
+    vm = build_virtual_machine("tactical-iso-win", "default", iso_spec, owner_ref)
+    disks = vm["spec"]["template"]["spec"]["domain"]["devices"]["disks"]
+    volumes = vm["spec"]["template"]["spec"]["volumes"]
+
+    install_disk = next((d for d in disks if d["name"] == "installdisk"), None)
+    install_vol = next((v for v in volumes if v["name"] == "installdisk"), None)
+
+    assert install_disk is not None
+    assert install_disk["disk"]["bus"] == "virtio"
+    assert install_vol is not None
+    assert install_vol["emptyDisk"]["capacity"] == "40Gi"
 

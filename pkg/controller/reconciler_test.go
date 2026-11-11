@@ -456,11 +456,64 @@ func TestWindowsSysprepAndCredentials(t *testing.T) {
 	if !strings.Contains(xmlContent, "<Value>SecretP@ssw0rd!2026</Value>") {
 		t.Errorf("expected injected password in autounattend.xml")
 	}
-	if !strings.Contains(xmlContent, "<Path>D:\\</Path>") {
+	if !strings.Contains(xmlContent, "<Path>F:\\amd64\\2k22</Path>") {
 		t.Errorf("expected VirtIO driver search path in autounattend.xml")
 	}
 	if !strings.Contains(xmlContent, "qemu-ga-x86_64.msi") {
 		t.Errorf("expected QEMU guest agent install in FirstLogonCommands")
+	}
+}
+
+func TestWindowsISOInstallationDiskAttachment(t *testing.T) {
+	isoVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tactical-iso-win-vm",
+			Namespace: "default",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType: "windows",
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType: "upload",
+				Format:     "iso",
+			},
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				DiskBus: "virtio",
+			},
+		},
+	}
+	vmObj := BuildVirtualMachine(isoVM)
+	tmplSpec := vmObj.Object["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})
+	domain := tmplSpec["domain"].(map[string]interface{})
+	devices := domain["devices"].(map[string]interface{})
+	disks := devices["disks"].([]interface{})
+	volumes := tmplSpec["volumes"].([]interface{})
+
+	var foundInstallDisk, foundInstallVol bool
+	for _, d := range disks {
+		dm := d.(map[string]interface{})
+		if dm["name"] == "installdisk" {
+			foundInstallDisk = true
+			diskMap := dm["disk"].(map[string]interface{})
+			if diskMap["bus"] != "virtio" {
+				t.Errorf("expected installdisk bus virtio, got %v", diskMap["bus"])
+			}
+		}
+	}
+	for _, v := range volumes {
+		vm := v.(map[string]interface{})
+		if vm["name"] == "installdisk" {
+			foundInstallVol = true
+			emptyDisk := vm["emptyDisk"].(map[string]interface{})
+			if emptyDisk["capacity"] != "40Gi" {
+				t.Errorf("expected emptyDisk capacity 40Gi, got %v", emptyDisk["capacity"])
+			}
+		}
+	}
+	if !foundInstallDisk {
+		t.Errorf("expected installdisk in disks")
+	}
+	if !foundInstallVol {
+		t.Errorf("expected installdisk in volumes")
 	}
 }
 
