@@ -1,0 +1,31 @@
+apiVersion: uds.dev/v1alpha1
+kind: UDSVirtualMachine
+metadata:
+  name: tactical-windows-vm
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tactical-windows-vm
+    app.kubernetes.io/managed-by: uds-vm-prep
+    uds.dev/security-tier: mission-critical
+  annotations:
+    uds.dev/workload-profile: windows-server-2022
+    uds.dev/stig-compliance: DoD-Windows-Server-2022-v1r3
+spec:
+  osType: windows
+  cpus: 4
+  memory: 4Gi
+  runStrategy: Halted
+  disk:
+    sourceType: upload
+    format: raw
+    virtualSizeBytes: 21474836480 # 20 GiB
+    checksum: sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+  windowsProfile:
+    diskBus: virtio
+    nicModel: virtio
+    injectVirtioWinISO: true
+    virtioWinImage: quay.io/kubevirt/virtio-win-container-disk:latest
+    enableHyperVEnlightenments: true
+    enableSecureBootTPM: true
+  securityProfile:
+    zeroTrustNetwork: true

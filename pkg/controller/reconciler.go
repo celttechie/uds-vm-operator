@@ -108,10 +108,78 @@ func BuildZeroTrustNetworkPolicy(udsvm *udsv1alpha1.UDSVirtualMachine) *networki
 	}
 }
 
-// BuildCloudInitSecret builds a hardened Cloud-Init NoCloud Secret enforcing SSH password
-// disabling and optional FIPS mode (NIST 800-53 AC-3 / IA-5).
+// BuildCloudInitSecret builds a hardened Cloud-Init NoCloud Secret (Linux) or
+// autounattend.xml / unattend.xml Sysprep Secret (Windows) (NIST 800-53 AC-3 / IA-5).
 func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine) *corev1.Secret {
 	ownerRef := BuildOwnerReference(udsvm)
+	isWindows := udsvm.Spec.OSType == "windows"
+
+	if isWindows {
+		unattendXML := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+          <Path>E:\</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+      </OOBE>
+      <ComputerName>%s</ComputerName>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>UDS-TempPass-ChangeMe!</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -Command "Start-Process msiexec.exe -ArgumentList '/i D:\virtio-win-gt-x64.msi /qn /norestart' -Wait"</CommandLine>
+          <Description>Install VirtIO guest drivers and QEMU guest agent</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>`, udsvm.Name)
+
+		return &corev1.Secret{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Secret",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-cloudinit", udsvm.Name),
+				Namespace: udsvm.Namespace,
+				Labels: map[string]string{
+					"app.kubernetes.io/name":       udsvm.Name,
+					"app.kubernetes.io/managed-by": "uds-vm-operator",
+					"uds.dev/nist-control":         "AC-3",
+				},
+				OwnerReferences: []metav1.OwnerReference{ownerRef},
+			},
+			Type: corev1.SecretTypeOpaque,
+			StringData: map[string]string{
+				"autounattend.xml": unattendXML,
+				"unattend.xml":     unattendXML,
+				"userdata":         fmt.Sprintf("#ps1_sysnative\nWrite-Host 'UDS Windows VM initialized: %s'\n", udsvm.Name),
+			},
+		}
+	}
 
 	disallowSSH := true
 	if udsvm.Spec.SecurityProfile.DisallowSSHPassword != nil {
@@ -240,6 +308,177 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 		runStrategy = "Halted"
 	}
 
+	isWindows := udsvm.Spec.OSType == "windows"
+	diskBus := "virtio"
+	nicModel := "virtio"
+	injectVirtioWinISO := false
+	virtioWinImage := "quay.io/kubevirt/virtio-win-container-disk:latest"
+	enableHyperV := false
+	enableSecureBootTPM := false
+
+	if isWindows {
+		injectVirtioWinISO = true
+		enableHyperV = true
+		enableSecureBootTPM = true
+
+		if udsvm.Spec.WindowsProfile != nil {
+			if udsvm.Spec.WindowsProfile.DiskBus != "" {
+				diskBus = udsvm.Spec.WindowsProfile.DiskBus
+			}
+			if udsvm.Spec.WindowsProfile.NICModel != "" {
+				nicModel = udsvm.Spec.WindowsProfile.NICModel
+			}
+			if udsvm.Spec.WindowsProfile.InjectVirtioWinISO != nil {
+				injectVirtioWinISO = *udsvm.Spec.WindowsProfile.InjectVirtioWinISO
+			}
+			if udsvm.Spec.WindowsProfile.VirtioWinImage != "" {
+				virtioWinImage = udsvm.Spec.WindowsProfile.VirtioWinImage
+			}
+			if udsvm.Spec.WindowsProfile.EnableHyperVEnlightenments != nil {
+				enableHyperV = *udsvm.Spec.WindowsProfile.EnableHyperVEnlightenments
+			}
+			if udsvm.Spec.WindowsProfile.EnableSecureBootTPM != nil {
+				enableSecureBootTPM = *udsvm.Spec.WindowsProfile.EnableSecureBootTPM
+			}
+		}
+	}
+
+	disks := []interface{}{
+		map[string]interface{}{
+			"name": "rootdisk",
+			"disk": map[string]interface{}{
+				"bus": diskBus,
+			},
+		},
+	}
+	volumes := []interface{}{
+		map[string]interface{}{
+			"name": "rootdisk",
+			"dataVolume": map[string]interface{}{
+				"name": fmt.Sprintf("%s-dv", udsvm.Name),
+			},
+		},
+	}
+
+	if isWindows {
+		// Attach Sysprep / Unattended answer file as CD-ROM / volume
+		disks = append(disks, map[string]interface{}{
+			"name": "sysprepdisk",
+			"cdrom": map[string]interface{}{
+				"bus": "sata",
+			},
+		})
+		volumes = append(volumes, map[string]interface{}{
+			"name": "sysprepdisk",
+			"sysprep": map[string]interface{}{
+				"secret": map[string]interface{}{
+					"name": fmt.Sprintf("%s-cloudinit", udsvm.Name),
+				},
+			},
+		})
+
+		// Attach VirtIO Windows driver ISO containerDisk if enabled
+		if injectVirtioWinISO {
+			disks = append(disks, map[string]interface{}{
+				"name": "virtio-win-drivers",
+				"cdrom": map[string]interface{}{
+					"bus": "sata",
+				},
+			})
+			volumes = append(volumes, map[string]interface{}{
+				"name": "virtio-win-drivers",
+				"containerDisk": map[string]interface{}{
+					"image": virtioWinImage,
+				},
+			})
+		}
+	} else {
+		// Linux Cloud-Init NoCloud volume
+		disks = append(disks, map[string]interface{}{
+			"name": "cloudinitdisk",
+			"disk": map[string]interface{}{
+				"bus": "virtio",
+			},
+		})
+		volumes = append(volumes, map[string]interface{}{
+			"name": "cloudinitdisk",
+			"cloudInitNoCloud": map[string]interface{}{
+				"secretRef": map[string]interface{}{
+					"name": fmt.Sprintf("%s-cloudinit", udsvm.Name),
+				},
+			},
+		})
+	}
+
+	iface := map[string]interface{}{
+		"name":       "default",
+		"masquerade": map[string]interface{}{},
+	}
+	if nicModel != "virtio" {
+		iface["model"] = nicModel
+	}
+
+	features := map[string]interface{}{}
+	devices := map[string]interface{}{
+		"disks": disks,
+		"interfaces": []interface{}{
+			iface,
+		},
+	}
+
+	domainSpec := map[string]interface{}{
+		"cpu": map[string]interface{}{
+			"cores": int64(cpus),
+		},
+		"resources": map[string]interface{}{
+			"requests": map[string]interface{}{
+				"memory": memory,
+			},
+		},
+		"devices": devices,
+	}
+
+	if enableHyperV {
+		features["hyperv"] = map[string]interface{}{
+			"relaxed":     map[string]interface{}{},
+			"vapic":       map[string]interface{}{},
+			"spinlocks":   map[string]interface{}{"spinlocks": int64(8191)},
+			"synic":       map[string]interface{}{},
+			"synictimer":  map[string]interface{}{"direct": map[string]interface{}{}},
+			"frequencies": map[string]interface{}{},
+			"tlbflush":    map[string]interface{}{},
+		}
+		domainSpec["clock"] = map[string]interface{}{
+			"utc": map[string]interface{}{},
+			"timer": map[string]interface{}{
+				"hyperv": map[string]interface{}{},
+				"hpet":   map[string]interface{}{"present": false},
+				"pit":    map[string]interface{}{"tickPolicy": "delay"},
+				"rtc":    map[string]interface{}{"tickPolicy": "catchup"},
+			},
+		}
+	}
+
+	if enableSecureBootTPM {
+		features["smm"] = map[string]interface{}{"enabled": true}
+		domainSpec["firmware"] = map[string]interface{}{
+			"bootloader": map[string]interface{}{
+				"efi": map[string]interface{}{
+					"secureBoot": true,
+				},
+			},
+		}
+		tpmSpec := map[string]interface{}{}
+		if udsvm.Spec.WindowsProfile != nil && udsvm.Spec.WindowsProfile.PersistentTPM != nil && *udsvm.Spec.WindowsProfile.PersistentTPM {
+			tpmSpec["persistent"] = true
+		}
+		devices["tpm"] = tpmSpec
+	}
+
+	if len(features) > 0 {
+		domainSpec["features"] = features
+	}
+
 	vm := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kubevirt.io/v1",
@@ -272,60 +511,14 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 						},
 					},
 					"spec": map[string]interface{}{
-						"domain": map[string]interface{}{
-							"cpu": map[string]interface{}{
-								"cores": int64(cpus),
-							},
-							"resources": map[string]interface{}{
-								"requests": map[string]interface{}{
-									"memory": memory,
-								},
-							},
-							"devices": map[string]interface{}{
-								"disks": []interface{}{
-									map[string]interface{}{
-										"name": "rootdisk",
-										"disk": map[string]interface{}{
-											"bus": "virtio",
-										},
-									},
-									map[string]interface{}{
-										"name": "cloudinitdisk",
-										"disk": map[string]interface{}{
-											"bus": "virtio",
-										},
-									},
-								},
-								"interfaces": []interface{}{
-									map[string]interface{}{
-										"name":       "default",
-										"masquerade": map[string]interface{}{},
-									},
-								},
-							},
-						},
+						"domain": domainSpec,
 						"networks": []interface{}{
 							map[string]interface{}{
 								"name": "default",
 								"pod":  map[string]interface{}{},
 							},
 						},
-						"volumes": []interface{}{
-							map[string]interface{}{
-								"name": "rootdisk",
-								"dataVolume": map[string]interface{}{
-									"name": fmt.Sprintf("%s-dv", udsvm.Name),
-								},
-							},
-							map[string]interface{}{
-								"name": "cloudinitdisk",
-								"cloudInitNoCloud": map[string]interface{}{
-									"secretRef": map[string]interface{}{
-										"name": fmt.Sprintf("%s-cloudinit", udsvm.Name),
-									},
-								},
-							},
-						},
+						"volumes": volumes,
 					},
 				},
 			},

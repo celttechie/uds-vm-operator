@@ -25,6 +25,9 @@ spec:
         - name: Source
           type: string
           jsonPath: .spec.disk.sourceType
+        - name: OS
+          type: string
+          jsonPath: .spec.osType
         - name: PVC-Size
           type: string
           jsonPath: .status.calculatedPvcSize
@@ -60,6 +63,36 @@ spec:
                 runStrategy:
                   type: string
                   default: "Halted"
+                osType:
+                  type: string
+                  enum: ["linux", "windows"]
+                  default: "linux"
+                windowsProfile:
+                  type: object
+                  properties:
+                    diskBus:
+                      type: string
+                      enum: ["virtio", "sata"]
+                      default: "virtio"
+                    nicModel:
+                      type: string
+                      enum: ["virtio", "e1000e"]
+                      default: "virtio"
+                    injectVirtioWinISO:
+                      type: boolean
+                      default: true
+                    virtioWinImage:
+                      type: string
+                      default: "quay.io/kubevirt/virtio-win-container-disk:latest"
+                    enableHyperVEnlightenments:
+                      type: boolean
+                      default: true
+                    enableSecureBootTPM:
+                      type: boolean
+                      default: true
+                    persistentTPM:
+                      type: boolean
+                      default: false
                 disk:
                   type: object
                   required:

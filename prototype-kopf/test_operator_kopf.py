@@ -155,3 +155,67 @@ def test_vm_prep_inspect_and_backing_chain_rejection():
         )
         with pytest.raises(ValueError, match="unflattened backing chain"):
             inspect_disk_image(overlay_img)
+
+
+def test_build_windows_virtual_machine_and_sysprep():
+    win_meta = {
+        "name": "tactical-windows-vm",
+        "namespace": "default",
+        "uid": "99999999-8888-7777-6666-555555555555",
+    }
+    win_spec = {
+        "cpus": 4,
+        "memory": "4Gi",
+        "runStrategy": "Halted",
+        "osType": "windows",
+        "disk": {
+            "sourceType": "upload",
+            "format": "raw",
+            "virtualSizeBytes": 21474836480,
+            "checksum": "sha256:111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000",
+        },
+        "windowsProfile": {
+            "diskBus": "virtio",
+            "nicModel": "virtio",
+            "injectVirtioWinISO": True,
+            "enableHyperVEnlightenments": True,
+            "enableSecureBootTPM": True,
+            "persistentTPM": True,
+        },
+    }
+    owner_ref = build_owner_reference(win_meta)
+
+    # 1. Cloudinit Secret / Sysprep
+    sec = build_cloudinit_secret("tactical-windows-vm", "default", win_spec, owner_ref)
+    assert sec["metadata"]["name"] == "tactical-windows-vm-cloudinit"
+    assert "<ComputerName>tactical-windows-vm</ComputerName>" in sec["stringData"]["autounattend.xml"]
+    assert "<AdministratorPassword>" in sec["stringData"]["autounattend.xml"]
+
+    # 2. VirtualMachine object
+    vm = build_virtual_machine("tactical-windows-vm", "default", win_spec, owner_ref)
+    domain = vm["spec"]["template"]["spec"]["domain"]
+    features = domain["features"]
+    assert "hyperv" in features
+    assert "relaxed" in features["hyperv"]
+    assert "vapic" in features["hyperv"]
+    assert "spinlocks" in features["hyperv"]
+
+    clock = domain["clock"]
+    assert "hyperv" in clock["timer"]
+
+    firmware = domain["firmware"]
+    assert firmware["bootloader"]["efi"]["secureBoot"] is True
+    assert domain["devices"]["tpm"]["persistent"] is True
+
+    disks = domain["devices"]["disks"]
+    assert len(disks) == 3
+    assert disks[0]["name"] == "rootdisk"
+    assert disks[1]["name"] == "sysprepdisk"
+    assert disks[2]["name"] == "virtio-win-drivers"
+
+    volumes = vm["spec"]["template"]["spec"]["volumes"]
+    assert len(volumes) == 3
+    assert volumes[1]["name"] == "sysprepdisk"
+    assert volumes[1]["sysprep"]["secret"]["name"] == "tactical-windows-vm-cloudinit"
+    assert volumes[2]["name"] == "virtio-win-drivers"
+

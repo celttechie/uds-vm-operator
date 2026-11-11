@@ -88,9 +88,74 @@ def build_cloudinit_secret(
     owner_ref: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Build a hardened Cloud-Init NoCloud Secret enforcing SSH password disabling
+    Build a hardened Cloud-Init / Sysprep Secret enforcing SSH/Admin password security
     and optional FIPS mode (NIST 800-53 AC-3 / IA-5).
     """
+    is_windows = spec.get("osType") == "windows"
+
+    if is_windows:
+        unattend_xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\\</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+          <Path>E:\\</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+      </OOBE>
+      <ComputerName>{name}</ComputerName>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>UDS-TempPass-ChangeMe!</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -Command "Start-Process msiexec.exe -ArgumentList '/i D:\\virtio-win-gt-x64.msi /qn /norestart' -Wait"</CommandLine>
+          <Description>Install VirtIO guest drivers and QEMU guest agent</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>"""
+        return {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": f"{name}-cloudinit",
+                "namespace": namespace,
+                "labels": {
+                    "app.kubernetes.io/name": name,
+                    "app.kubernetes.io/managed-by": "uds-vm-operator",
+                    "uds.dev/nist-control": "AC-3",
+                },
+                "ownerReferences": [owner_ref],
+            },
+            "type": "Opaque",
+            "stringData": {
+                "autounattend.xml": unattend_xml,
+                "unattend.xml": unattend_xml,
+                "userdata": f"#ps1_sysnative\nWrite-Host 'UDS Windows VM initialized: {name}'\n",
+            },
+        }
+
     sec = spec.get("securityProfile", {})
     disallow_ssh_pw = sec.get("disallowSSHPassword", True)
     fips_mode = sec.get("fipsMode", True)
@@ -206,6 +271,114 @@ def build_virtual_machine(
     memory = spec.get("memory", "2Gi")
     run_strategy = spec.get("runStrategy", "Halted")
 
+    is_windows = spec.get("osType") == "windows"
+    disk_bus = "virtio"
+    nic_model = "virtio"
+    inject_virtio_win = False
+    virtio_win_image = "quay.io/kubevirt/virtio-win-container-disk:latest"
+    enable_hyperv = False
+    enable_secure_boot_tpm = False
+
+    if is_windows:
+        inject_virtio_win = True
+        enable_hyperv = True
+        enable_secure_boot_tpm = True
+
+        win_profile = spec.get("windowsProfile", {})
+        if win_profile:
+            disk_bus = win_profile.get("diskBus", disk_bus)
+            nic_model = win_profile.get("nicModel", nic_model)
+            if "injectVirtioWinISO" in win_profile:
+                inject_virtio_win = bool(win_profile["injectVirtioWinISO"])
+            virtio_win_image = win_profile.get("virtioWinImage", virtio_win_image)
+            if "enableHyperVEnlightenments" in win_profile:
+                enable_hyperv = bool(win_profile["enableHyperVEnlightenments"])
+            if "enableSecureBootTPM" in win_profile:
+                enable_secure_boot_tpm = bool(win_profile["enableSecureBootTPM"])
+
+    disks: List[Dict[str, Any]] = [
+        {"name": "rootdisk", "disk": {"bus": disk_bus}},
+    ]
+    volumes: List[Dict[str, Any]] = [
+        {"name": "rootdisk", "dataVolume": {"name": f"{name}-dv"}},
+    ]
+
+    if is_windows:
+        disks.append({"name": "sysprepdisk", "cdrom": {"bus": "sata"}})
+        volumes.append({
+            "name": "sysprepdisk",
+            "sysprep": {
+                "secret": {"name": f"{name}-cloudinit"}
+            }
+        })
+        if inject_virtio_win:
+            disks.append({"name": "virtio-win-drivers", "cdrom": {"bus": "sata"}})
+            volumes.append({
+                "name": "virtio-win-drivers",
+                "containerDisk": {"image": virtio_win_image}
+            })
+    else:
+        disks.append({"name": "cloudinitdisk", "disk": {"bus": "virtio"}})
+        volumes.append({
+            "name": "cloudinitdisk",
+            "cloudInitNoCloud": {
+                "secretRef": {"name": f"{name}-cloudinit"},
+            },
+        })
+
+    iface: Dict[str, Any] = {"name": "default", "masquerade": {}}
+    if nic_model != "virtio":
+        iface["model"] = nic_model
+
+    devices: Dict[str, Any] = {
+        "disks": disks,
+        "interfaces": [iface],
+    }
+
+    domain: Dict[str, Any] = {
+        "cpu": {"cores": cpus},
+        "resources": {"requests": {"memory": memory}},
+        "devices": devices,
+    }
+
+    features: Dict[str, Any] = {}
+    if enable_hyperv:
+        features["hyperv"] = {
+            "relaxed": {},
+            "vapic": {},
+            "spinlocks": {"spinlocks": 8191},
+            "synic": {},
+            "synictimer": {"direct": {}},
+            "frequencies": {},
+            "tlbflush": {},
+        }
+        domain["clock"] = {
+            "utc": {},
+            "timer": {
+                "hyperv": {},
+                "hpet": {"present": False},
+                "pit": {"tickPolicy": "delay"},
+                "rtc": {"tickPolicy": "catchup"},
+            },
+        }
+
+    if enable_secure_boot_tpm:
+        features["smm"] = {"enabled": True}
+        domain["firmware"] = {
+            "bootloader": {
+                "efi": {
+                    "secureBoot": True,
+                }
+            }
+        }
+        tpm_spec: Dict[str, Any] = {}
+        if is_windows and spec.get("windowsProfile", {}).get("persistentTPM"):
+            tpm_spec["persistent"] = True
+        devices["tpm"] = tpm_spec
+
+    if features:
+        domain["features"] = features
+
     return {
         "apiVersion": "kubevirt.io/v1",
         "kind": "VirtualMachine",
@@ -228,34 +401,11 @@ def build_virtual_machine(
                     }
                 },
                 "spec": {
-                    "domain": {
-                        "cpu": {"cores": cpus},
-                        "resources": {"requests": {"memory": memory}},
-                        "devices": {
-                            "disks": [
-                                {"name": "rootdisk", "disk": {"bus": "virtio"}},
-                                {"name": "cloudinitdisk", "disk": {"bus": "virtio"}},
-                            ],
-                            "interfaces": [
-                                {"name": "default", "masquerade": {}},
-                            ],
-                        },
-                    },
+                    "domain": domain,
                     "networks": [
                         {"name": "default", "pod": {}},
                     ],
-                    "volumes": [
-                        {
-                            "name": "rootdisk",
-                            "dataVolume": {"name": f"{name}-dv"},
-                        },
-                        {
-                            "name": "cloudinitdisk",
-                            "cloudInitNoCloud": {
-                                "secretRef": {"name": f"{name}-cloudinit"},
-                            },
-                        },
-                    ],
+                    "volumes": volumes,
                 },
             },
         },
