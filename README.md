@@ -4,8 +4,11 @@
 [![Python Prototype Tests](https://img.shields.io/badge/pytest-7%2F7%20passed-brightgreen.svg)](prototype-kopf/test_operator_kopf.py)
 [![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7-blue.svg)](manifests/crd/udsvirtualmachines.uds.dev.yaml)
 [![Upstream CDI PR](https://img.shields.io/badge/CDI%20PR-%234340%20Merged%2FTarget-orange.svg)](https://github.com/kubevirt/containerized-data-importer/pull/4340)
+[![Roadmap](https://img.shields.io/badge/Roadmap-v0.1.0--v0.4.0-purple.svg)](ROADMAP.md)
 
 An air-gap ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
+
+> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability)](https://github.com/celttechie/uds-vm-operator/milestone/4)).
 
 ---
 

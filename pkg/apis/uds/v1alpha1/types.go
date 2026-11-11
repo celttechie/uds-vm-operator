@@ -44,11 +44,55 @@ type SecurityProfileSpec struct {
 	FIPSMode            *bool `json:"fipsMode,omitempty"`
 }
 
+// WindowsProfileSpec defines configuration parameters for Windows guest virtual machines.
+type WindowsProfileSpec struct {
+	DiskBus                    string `json:"diskBus,omitempty"`
+	NICModel                   string `json:"nicModel,omitempty"`
+	InjectVirtioWinISO         *bool  `json:"injectVirtioWinISO,omitempty"`
+	VirtioWinImage             string `json:"virtioWinImage,omitempty"`
+	EnableHyperVEnlightenments *bool  `json:"enableHyperVEnlightenments,omitempty"`
+	EnableSecureBootTPM        *bool  `json:"enableSecureBootTPM,omitempty"`
+	PersistentTPM              *bool  `json:"persistentTPM,omitempty"`
+}
+
+// DeepCopyInto copies all properties of WindowsProfileSpec.
+func (in *WindowsProfileSpec) DeepCopyInto(out *WindowsProfileSpec) {
+	*out = *in
+	if in.InjectVirtioWinISO != nil {
+		v := *in.InjectVirtioWinISO
+		out.InjectVirtioWinISO = &v
+	}
+	if in.EnableHyperVEnlightenments != nil {
+		v := *in.EnableHyperVEnlightenments
+		out.EnableHyperVEnlightenments = &v
+	}
+	if in.EnableSecureBootTPM != nil {
+		v := *in.EnableSecureBootTPM
+		out.EnableSecureBootTPM = &v
+	}
+	if in.PersistentTPM != nil {
+		v := *in.PersistentTPM
+		out.PersistentTPM = &v
+	}
+}
+
+// DeepCopy copies the receiver, creating a new WindowsProfileSpec.
+func (in *WindowsProfileSpec) DeepCopy() *WindowsProfileSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(WindowsProfileSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 // UDSVirtualMachineSpec defines the desired state of UDSVirtualMachine.
 type UDSVirtualMachineSpec struct {
 	CPUs            int                 `json:"cpus,omitempty"`
 	Memory          string              `json:"memory,omitempty"`
 	RunStrategy     string              `json:"runStrategy,omitempty"`
+	OSType          string              `json:"osType,omitempty"`
+	WindowsProfile  *WindowsProfileSpec `json:"windowsProfile,omitempty"`
 	Disk            DiskSpec            `json:"disk"`
 	SecurityProfile SecurityProfileSpec `json:"securityProfile,omitempty"`
 }
@@ -86,6 +130,9 @@ func (in *UDSVirtualMachine) DeepCopyInto(out *UDSVirtualMachine) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	out.Spec = in.Spec
+	if in.Spec.WindowsProfile != nil {
+		out.Spec.WindowsProfile = in.Spec.WindowsProfile.DeepCopy()
+	}
 	if in.Spec.SecurityProfile.ZeroTrustNetwork != nil {
 		v := *in.Spec.SecurityProfile.ZeroTrustNetwork
 		out.Spec.SecurityProfile.ZeroTrustNetwork = &v

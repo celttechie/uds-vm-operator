@@ -261,3 +261,137 @@ func TestEvaluateStatusLifecycle(t *testing.T) {
 		t.Errorf("expected ZeroTrustIsolated true, got %v", st3.Compliance.ZeroTrustIsolated)
 	}
 }
+
+func TestBuildWindowsVirtualMachineAndSysprep(t *testing.T) {
+	trueVal := true
+	winVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tactical-windows-vm",
+			Namespace: "default",
+			UID:       "99999999-8888-7777-6666-555555555555",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			CPUs:        4,
+			Memory:      "4Gi",
+			RunStrategy: "Halted",
+			OSType:      "windows",
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType:       "upload",
+				Format:           "raw",
+				VirtualSizeBytes: 21474836480, // 20 GiB
+				Checksum:         "sha256:111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000",
+			},
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				DiskBus:                   "virtio",
+				NICModel:                  "virtio",
+				InjectVirtioWinISO:        &trueVal,
+				EnableHyperVEnlightenments: &trueVal,
+				EnableSecureBootTPM:       &trueVal,
+				PersistentTPM:             &trueVal,
+			},
+		},
+	}
+
+	// 1. Verify Secret generation
+	sec := BuildCloudInitSecret(winVM)
+	if sec.Name != "tactical-windows-vm-cloudinit" {
+		t.Errorf("expected secret name tactical-windows-vm-cloudinit, got %s", sec.Name)
+	}
+	autounattend, ok := sec.StringData["autounattend.xml"]
+	if !ok || !strings.Contains(autounattend, "<ComputerName>tactical-windows-vm</ComputerName>") {
+		t.Errorf("expected autounattend.xml with ComputerName, got:\n%s", autounattend)
+	}
+	if !strings.Contains(autounattend, "<AdministratorPassword>") {
+		t.Errorf("expected AdministratorPassword block in autounattend.xml")
+	}
+
+	// 2. Verify VirtualMachine object generation
+	vmObj := BuildVirtualMachine(winVM)
+	spec, ok := vmObj.Object["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("spec not found in VM")
+	}
+	tmpl, ok := spec["template"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("template not found in spec")
+	}
+	tmplSpec, ok := tmpl["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("template spec not found")
+	}
+	domain, ok := tmplSpec["domain"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("domain not found")
+	}
+
+	// Hyper-V features
+	features, ok := domain["features"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("features not found")
+	}
+	hyperv, ok := features["hyperv"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("hyperv features not found")
+	}
+	if _, ok := hyperv["relaxed"]; !ok {
+		t.Errorf("expected hyperv.relaxed feature")
+	}
+	if _, ok := hyperv["vapic"]; !ok {
+		t.Errorf("expected hyperv.vapic feature")
+	}
+	if _, ok := hyperv["spinlocks"]; !ok {
+		t.Errorf("expected hyperv.spinlocks feature")
+	}
+
+	// Clock timers
+	clock, ok := domain["clock"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("clock not found")
+	}
+	timers, ok := clock["timer"].(map[string]interface{})
+	if !ok || timers["hyperv"] == nil {
+		t.Errorf("expected clock.timer.hyperv")
+	}
+
+	// UEFI SecureBoot and vTPM
+	firmware, ok := domain["firmware"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("firmware not found")
+	}
+	bootloader, ok := firmware["bootloader"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bootloader not found")
+	}
+	efi, ok := bootloader["efi"].(map[string]interface{})
+	if !ok || efi["secureBoot"] != true {
+		t.Errorf("expected efi.secureBoot=true, got %v", efi)
+	}
+
+	devices, ok := domain["devices"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("devices not found")
+	}
+	tpm, ok := devices["tpm"].(map[string]interface{})
+	if !ok || tpm["persistent"] != true {
+		t.Errorf("expected persistent tpm when PersistentTPM=true, got %v", tpm)
+	}
+
+	// Disks and Volumes: rootdisk, sysprepdisk, virtio-win-drivers
+	disks, ok := devices["disks"].([]interface{})
+	if !ok || len(disks) != 3 {
+		t.Fatalf("expected 3 disks (root, sysprep, drivers), got %d", len(disks))
+	}
+	volumes, ok := tmplSpec["volumes"].([]interface{})
+	if !ok || len(volumes) != 3 {
+		t.Fatalf("expected 3 volumes (root, sysprep, drivers), got %d", len(volumes))
+	}
+
+	sysprepVol := volumes[1].(map[string]interface{})
+	if sysprepVol["name"] != "sysprepdisk" {
+		t.Errorf("expected volume 1 to be sysprepdisk, got %v", sysprepVol["name"])
+	}
+	driverVol := volumes[2].(map[string]interface{})
+	if driverVol["name"] != "virtio-win-drivers" {
+		t.Errorf("expected volume 2 to be virtio-win-drivers, got %v", driverVol["name"])
+	}
+}
