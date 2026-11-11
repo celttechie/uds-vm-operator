@@ -46,7 +46,7 @@ Automate mission-critical Windows Server / Windows 11 virtual machines on KubeVi
 - **KVM Hyper-V Enlightenments:** Automatic injection of `relaxed`, `vapic`, `spinlocks: 8191`, `synic`, `tlbflush`, `frequencies`, and `hypervclock` timers to eliminate host CPU starvation and clock drift.
 - **Storage Driver Remediation:** Automated attachment of `virtio-win` driver ISO (`containerDisk`) and transitional SATA bus fallback for un-drivered legacy images.
 - **DISA STIG Hardware Security:** Automated injection of UEFI Secure Boot (`firmware.bootloader.efi`), System Management Mode (`features.smm`), and vTPM 2.0 (`devices.tpm`).
-- **Sysprep `autounattend.xml` Secret Generation:** Automated Windows unattended answer file configuring WinPE driver discovery on `virtio-win` and initializing the QEMU Guest Agent.
+- **Automated Sysprep & `Autounattend.xml` Generation:** Zero-touch Windows installer answer-file generator mounting via KubeVirt `sysprep` volume, automating VirtIO driver injection, disk partitioning, and QEMU Guest Agent initialization to eliminate manual GUI interaction.
 - **Runbook Documentation:** In-depth troubleshooting guide (`docs/windows-troubleshooting.md`) detailing Windows-on-KubeVirt diagnosis and remediation.
 
 ---
@@ -66,14 +66,18 @@ Provide a standalone, air-gap ready Go CLI for offline VM preparation and lifecy
 
 ---
 
-## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — UDS Observability & Continuous ATO Prometheus Metrics (PLANNED)
+## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — Defense Unicorns Lula (OSCAL) Continuous ATO & Prometheus Observability (PLANNED)
 
 ### Objective:
-Expose real-time compliance posture, storage health, and guest virtualization telemetry directly into Prometheus and UDS monitoring dashboards.
+Bridge the gap between Kubernetes orchestration and federal authorization by implementing machine-readable **OSCAL (Open Security Controls Assessment Language)** with [Defense Unicorns Lula](https://github.com/defenseunicorns/lula), replacing ad-hoc CI checklist assertions with automated, cryptographically signed Continuous ATO (cATO) evidence.
 
 ### Planned Capabilities:
+- **Defense Unicorns Lula OSCAL Integration:**
+  - `compliance/oscal-component.yaml`: Machine-readable OSCAL component definition detailing controls `SC-7` (Zero Trust Boundary), `AC-3` (Access Enforcement), `SI-7` (Integrity & PR #4340 Checksums), and `IA-5` (Credential Management).
+  - Automated Lula validation rules evaluating live KubeVirt child objects (`NetworkPolicy`, `Secret`, `DataVolume`) using Kubernetes domain providers.
+  - `lula validate` step in GitHub Actions producing signed `assessment-results.yaml` artifacts on every merge.
 - **Custom Prometheus Metrics:**
-  - `uds_vm_compliance_verified{vm="...", control="SI-7|SC-7|AC-3"}`: Gauges reporting active compliance posture.
+  - `uds_vm_compliance_verified{vm="...", control="SI-7|SC-7|AC-3"}`: Gauges reporting real-time compliance posture linked to OSCAL control IDs.
   - `uds_vm_storage_overhead_ratio`: Metrics tracking allocated PVC capacity vs virtual disk size.
   - `uds_vm_phase_status`: High-cardinality status gauges tracking `WaitingForUpload`, `Provisioning`, and `Ready`.
-- **Grafana Dashboard Definition:** Declarative dashboard JSON visualizing fleet virtualization health and STIG compliance evidence.
+- **Grafana Dashboard Definition:** Declarative dashboard JSON visualizing fleet virtualization health, resource overhead, and automated cATO compliance evidence.
