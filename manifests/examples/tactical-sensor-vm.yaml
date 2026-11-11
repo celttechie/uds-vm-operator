@@ -13,6 +13,7 @@ metadata:
 spec:
   cpus: 1
   memory: 512Mi
+  runStrategy: Always
   disk:
     sourceType: upload
     format: raw

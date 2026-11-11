@@ -10,6 +10,9 @@ all: test build
 
 build: build-operator build-cli
 
+build-image: build-operator
+	docker build -t ghcr.io/celttechie/uds-vm-operator:$(VERSION) .
+
 build-operator:
 	@mkdir -p bin
 	go build -ldflags="$(LDFLAGS)" -o bin/uds-vm-operator ./cmd/uds-vm-operator
