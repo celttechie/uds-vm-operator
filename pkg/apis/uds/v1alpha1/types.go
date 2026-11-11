@@ -53,6 +53,8 @@ type WindowsProfileSpec struct {
 	EnableHyperVEnlightenments *bool  `json:"enableHyperVEnlightenments,omitempty"`
 	EnableSecureBootTPM        *bool  `json:"enableSecureBootTPM,omitempty"`
 	PersistentTPM              *bool  `json:"persistentTPM,omitempty"`
+	SysprepSecretRef           string `json:"sysprepSecretRef,omitempty"`
+	AdminPasswordSecretRef     string `json:"adminPasswordSecretRef,omitempty"`
 }
 
 // DeepCopyInto copies all properties of WindowsProfileSpec.

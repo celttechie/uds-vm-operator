@@ -2,9 +2,12 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math"
+	"math/big"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -110,76 +113,9 @@ func BuildZeroTrustNetworkPolicy(udsvm *udsv1alpha1.UDSVirtualMachine) *networki
 
 // BuildCloudInitSecret builds a hardened Cloud-Init NoCloud Secret (Linux) or
 // autounattend.xml / unattend.xml Sysprep Secret (Windows) (NIST 800-53 AC-3 / IA-5).
-func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine) *corev1.Secret {
+func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine, adminPassword ...string) *corev1.Secret {
 	ownerRef := BuildOwnerReference(udsvm)
 	isWindows := udsvm.Spec.OSType == "windows"
-
-	if isWindows {
-		unattendXML := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="windowsPE">
-    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-      <DriverPaths>
-        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-          <Path>D:\</Path>
-        </PathAndCredentials>
-        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
-          <Path>E:\</Path>
-        </PathAndCredentials>
-      </DriverPaths>
-    </component>
-  </settings>
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-      <OOBE>
-        <HideEULAPage>true</HideEULAPage>
-        <HideLocalAccountScreen>true</HideLocalAccountScreen>
-        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
-        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-        <NetworkLocation>Work</NetworkLocation>
-        <ProtectYourPC>1</ProtectYourPC>
-      </OOBE>
-      <ComputerName>%s</ComputerName>
-      <UserAccounts>
-        <AdministratorPassword>
-          <Value>UDS-TempPass-ChangeMe!</Value>
-          <PlainText>true</PlainText>
-        </AdministratorPassword>
-      </UserAccounts>
-      <FirstLogonCommands>
-        <SynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <CommandLine>powershell -Command "Start-Process msiexec.exe -ArgumentList '/i D:\virtio-win-gt-x64.msi /qn /norestart' -Wait"</CommandLine>
-          <Description>Install VirtIO guest drivers and QEMU guest agent</Description>
-        </SynchronousCommand>
-      </FirstLogonCommands>
-    </component>
-  </settings>
-</unattend>`, udsvm.Name)
-
-		return &corev1.Secret{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Secret",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-cloudinit", udsvm.Name),
-				Namespace: udsvm.Namespace,
-				Labels: map[string]string{
-					"app.kubernetes.io/name":       udsvm.Name,
-					"app.kubernetes.io/managed-by": "uds-vm-operator",
-					"uds.dev/nist-control":         "AC-3",
-				},
-				OwnerReferences: []metav1.OwnerReference{ownerRef},
-			},
-			Type: corev1.SecretTypeOpaque,
-			StringData: map[string]string{
-				"autounattend.xml": unattendXML,
-				"unattend.xml":     unattendXML,
-				"userdata":         fmt.Sprintf("#ps1_sysnative\nWrite-Host 'UDS Windows VM initialized: %s'\n", udsvm.Name),
-			},
-		}
-	}
 
 	disallowSSH := true
 	if udsvm.Spec.SecurityProfile.DisallowSSHPassword != nil {
@@ -200,6 +136,20 @@ func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine) *corev1.Secret {
 		userdata += "runcmd:\n  - [ sh, -c, 'echo Hardened UDS VM initialized (FIPS profile active)' ]\n"
 	}
 
+	stringData := map[string]string{
+		"userdata": userdata,
+	}
+
+	if isWindows {
+		pw := ""
+		if len(adminPassword) > 0 && adminPassword[0] != "" {
+			pw = adminPassword[0]
+		}
+		autounattendXML := BuildWindowsAutounattendXML(udsvm, pw)
+		stringData["autounattend.xml"] = autounattendXML
+		stringData["unattend.xml"] = autounattendXML
+	}
+
 	return &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -216,10 +166,192 @@ func BuildCloudInitSecret(udsvm *udsv1alpha1.UDSVirtualMachine) *corev1.Secret {
 			OwnerReferences: []metav1.OwnerReference{ownerRef},
 		},
 		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"userdata": userdata,
-		},
+		StringData: stringData,
 	}
+}
+
+// GenerateSecurePassword generates a cryptographically random password meeting DISA STIG complexity (NIST 800-53 IA-5).
+func GenerateSecurePassword(length int) (string, error) {
+	if length < 16 {
+		length = 24
+	}
+	const (
+		upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+		lower   = "abcdefghijkmnopqrstuvwxyz"
+		digits  = "23456789"
+		symbols = "!@#$%^&*-_=+"
+	)
+	b := make([]byte, length)
+	classes := []string{upper, lower, digits, symbols}
+	for i, c := range classes {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(c))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = c[n.Int64()]
+	}
+
+	all := upper + lower + digits + symbols
+	for i := len(classes); i < length; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(all))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = all[n.Int64()]
+	}
+
+	for i := range b {
+		j, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
+		if err != nil {
+			return "", err
+		}
+		b[i], b[j.Int64()] = b[j.Int64()], b[i]
+	}
+
+	return string(b), nil
+}
+
+// SanitizeNetBIOSName truncates and sanitizes a VM name to meet Windows 15-character NetBIOS limits.
+func SanitizeNetBIOSName(name string) string {
+	name = strings.ToUpper(name)
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	res := b.String()
+	if len(res) > 15 {
+		res = res[:15]
+	}
+	res = strings.TrimRight(res, "-")
+	if res == "" {
+		res = "WIN-TACTICAL"
+	}
+	return res
+}
+
+// BuildWindowsAutounattendXML generates a zero-touch Autounattend.xml answer file for Windows Setup (NIST 800-53 AC-3, IA-5).
+func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPassword string) string {
+	if adminPassword == "" {
+		adminPassword = "P@ssw0rd!" + udsvm.Name
+	}
+	computerName := SanitizeNetBIOSName(udsvm.Name)
+
+	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+          <Path>E:\</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>100</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>UDS Administrator</FullName>
+        <Organization>Defense Unicorns</Organization>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>%s</ComputerName>
+      <TimeZone>UTC</TimeZone>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>%s</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\,E:\ -Filter 'qemu-ga-x86_64.msi' -Recurse | ForEach-Object { Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }"</CommandLine>
+          <Description>Install QEMU Guest Agent</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>`, computerName, adminPassword)
 }
 
 // BuildDataVolume builds a CDI DataVolume resource with cryptographic checksum validation
@@ -371,6 +503,10 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 
 	if isWindows {
 		// Attach Sysprep / Unattended answer file as CD-ROM / volume
+		sysprepSecretName := fmt.Sprintf("%s-cloudinit", udsvm.Name)
+		if udsvm.Spec.WindowsProfile != nil && udsvm.Spec.WindowsProfile.SysprepSecretRef != "" {
+			sysprepSecretName = udsvm.Spec.WindowsProfile.SysprepSecretRef
+		}
 		disks = append(disks, map[string]interface{}{
 			"name": "sysprepdisk",
 			"cdrom": map[string]interface{}{
@@ -381,7 +517,7 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 			"name": "sysprepdisk",
 			"sysprep": map[string]interface{}{
 				"secret": map[string]interface{}{
-					"name": fmt.Sprintf("%s-cloudinit", udsvm.Name),
+					"name": sysprepSecretName,
 				},
 			},
 		})
@@ -688,8 +824,57 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		}
 	}
 
-	// 2. Reconcile Hardened Cloud-Init Secret
-	secret := BuildCloudInitSecret(udsvm)
+	// 2. Reconcile Windows Credentials & Sysprep / Cloud-Init Secret
+	adminPassword := ""
+	if udsvm.Spec.OSType == "windows" {
+		if udsvm.Spec.WindowsProfile != nil && udsvm.Spec.WindowsProfile.AdminPasswordSecretRef != "" {
+			credSecret := &corev1.Secret{}
+			err := r.Get(ctx, types.NamespacedName{Name: udsvm.Spec.WindowsProfile.AdminPasswordSecretRef, Namespace: udsvm.Namespace}, credSecret)
+			if err == nil {
+				if pw, ok := credSecret.Data["password"]; ok {
+					adminPassword = string(pw)
+				} else if pw, ok := credSecret.Data["admin-password"]; ok {
+					adminPassword = string(pw)
+				}
+			}
+		}
+		if adminPassword == "" {
+			credSecretName := fmt.Sprintf("%s-admin-credentials", udsvm.Name)
+			existingCredSecret := &corev1.Secret{}
+			err := r.Get(ctx, types.NamespacedName{Name: credSecretName, Namespace: udsvm.Namespace}, existingCredSecret)
+			if err == nil {
+				if pw, ok := existingCredSecret.Data["password"]; ok {
+					adminPassword = string(pw)
+				}
+			} else if apierrors.IsNotFound(err) {
+				generatedPW, genErr := GenerateSecurePassword(24)
+				if genErr == nil {
+					adminPassword = generatedPW
+					ownerRef := BuildOwnerReference(udsvm)
+					credSecret := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      credSecretName,
+							Namespace: udsvm.Namespace,
+							Labels: map[string]string{
+								"app.kubernetes.io/name":       udsvm.Name,
+								"app.kubernetes.io/managed-by": "uds-vm-operator",
+								"uds.dev/nist-control":         "IA-5",
+							},
+							OwnerReferences: []metav1.OwnerReference{ownerRef},
+						},
+						Type: corev1.SecretTypeOpaque,
+						StringData: map[string]string{
+							"password": adminPassword,
+							"username": "Administrator",
+						},
+					}
+					_ = r.Create(ctx, credSecret)
+				}
+			}
+		}
+	}
+
+	secret := BuildCloudInitSecret(udsvm, adminPassword)
 	existingSecret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, existingSecret)
 	if apierrors.IsNotFound(err) {

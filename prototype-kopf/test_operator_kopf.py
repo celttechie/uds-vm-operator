@@ -17,6 +17,7 @@ from operator_kopf import (
     build_zero_trust_network_policy,
     calculate_pvc_size_mib,
     evaluate_status_from_datavolume,
+    generate_secure_password,
 )
 from vm_prep import compute_sha256, generate_udsvm_manifest, inspect_disk_image
 
@@ -188,7 +189,7 @@ def test_build_windows_virtual_machine_and_sysprep():
     # 1. Cloudinit Secret / Sysprep
     sec = build_cloudinit_secret("tactical-windows-vm", "default", win_spec, owner_ref)
     assert sec["metadata"]["name"] == "tactical-windows-vm-cloudinit"
-    assert "<ComputerName>tactical-windows-vm</ComputerName>" in sec["stringData"]["autounattend.xml"]
+    assert "<ComputerName>TACTICAL-WINDOW</ComputerName>" in sec["stringData"]["autounattend.xml"]
     assert "<AdministratorPassword>" in sec["stringData"]["autounattend.xml"]
 
     # 2. VirtualMachine object
@@ -218,4 +219,38 @@ def test_build_windows_virtual_machine_and_sysprep():
     assert volumes[1]["name"] == "sysprepdisk"
     assert volumes[1]["sysprep"]["secret"]["name"] == "tactical-windows-vm-cloudinit"
     assert volumes[2]["name"] == "virtio-win-drivers"
+
+
+def test_windows_sysprep_and_credentials():
+    # 1. Password complexity (NIST IA-5)
+    pw = generate_secure_password(24)
+    assert len(pw) == 24
+    assert any(c.isupper() for c in pw)
+    assert any(c.islower() for c in pw)
+    assert any(c.isdigit() for c in pw)
+    assert any(c in "!@#$%^&*-_=+" for c in pw)
+
+    # 2. Custom SysprepSecretRef
+    custom_spec = {
+        "osType": "windows",
+        "windowsProfile": {
+            "sysprepSecretRef": "enterprise-custom-unattend-secret"
+        },
+        "disk": {
+            "sourceType": "upload",
+            "checksum": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "virtualSizeBytes": 10 * 1024 * 1024,
+        }
+    }
+    owner_ref = {"apiVersion": "uds.dev/v1alpha1", "kind": "UDSVirtualMachine", "name": "custom-win", "uid": "123"}
+    vm = build_virtual_machine("custom-win", "default", custom_spec, owner_ref)
+    volumes = vm["spec"]["template"]["spec"]["volumes"]
+    assert volumes[1]["sysprep"]["secret"]["name"] == "enterprise-custom-unattend-secret"
+
+    # 3. Custom password injection
+    sec = build_cloudinit_secret("custom-win", "default", custom_spec, owner_ref, admin_password="CustomP@ssw0rd!2026")
+    xml = sec["stringData"]["autounattend.xml"]
+    assert "<Value>CustomP@ssw0rd!2026</Value>" in xml
+    assert "<Path>D:\\</Path>" in xml
+    assert "qemu-ga-x86_64.msi" in xml
 
