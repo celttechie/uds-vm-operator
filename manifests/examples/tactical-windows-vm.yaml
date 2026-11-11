@@ -27,5 +27,8 @@ spec:
     virtioWinImage: quay.io/kubevirt/virtio-container-disk:20261111_6cefb75928
     enableHyperVEnlightenments: true
     enableSecureBootTPM: true
+    # Optional: Bring-your-own Secret reference for admin credentials or custom Unattend.xml
+    # adminPasswordSecretRef: tactical-windows-credentials
+    # sysprepSecretRef: custom-unattend-secret
   securityProfile:
     zeroTrustNetwork: true

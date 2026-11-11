@@ -13,6 +13,7 @@ trivial and verifiable via identical unit test cases.
 
 import logging
 import math
+import secrets
 from typing import Any, Dict, List, Optional
 
 import kopf
@@ -81,80 +82,174 @@ def build_zero_trust_network_policy(name: str, namespace: str, owner_ref: Dict[s
     }
 
 
-def build_cloudinit_secret(
-    name: str,
-    namespace: str,
-    spec: Dict[str, Any],
-    owner_ref: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Build a hardened Cloud-Init / Sysprep Secret enforcing SSH/Admin password security
-    and optional FIPS mode (NIST 800-53 AC-3 / IA-5).
-    """
-    is_windows = spec.get("osType") == "windows"
+def generate_secure_password(length: int = 24) -> str:
+    """Generate a cryptographically random password meeting DISA STIG complexity (NIST 800-53 IA-5)."""
+    if length < 16:
+        length = 24
+    upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    lower = "abcdefghijkmnopqrstuvwxyz"
+    digits = "23456789"
+    symbols = "!@#$%^&*-_=+"
+    classes = [upper, lower, digits, symbols]
+    pw = [secrets.choice(c) for c in classes]
+    all_chars = upper + lower + digits + symbols
+    pw.extend(secrets.choice(all_chars) for _ in range(length - len(classes)))
+    secrets.SystemRandom().shuffle(pw)
+    return "".join(pw)
 
-    if is_windows:
-        unattend_xml = f"""<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+def sanitize_netbios_name(name: str) -> str:
+    """Truncate and sanitize VM name to meet Windows 15-character NetBIOS limits."""
+    cleaned = "".join(c for c in name.upper() if c.isalnum() or c == "-")
+    res = cleaned[:15].rstrip("-")
+    return res or "WIN-TACTICAL"
+
+
+def build_windows_autounattend_xml(name: str, admin_password: Optional[str] = None) -> str:
+    """Generate a zero-touch Autounattend.xml answer file for Windows Setup (NIST 800-53 AC-3, IA-5)."""
+    if not admin_password:
+        admin_password = f"P@ssw0rd!{name}"
+    computer_name = sanitize_netbios_name(name)
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <settings pass="windowsPE">
-    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <DriverPaths>
         <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-          <Path>D:\\</Path>
+          <Path>F:\\amd64\\2k22</Path>
         </PathAndCredentials>
         <PathAndCredentials wcm:action="add" wcm:keyValue="2">
-          <Path>E:\\</Path>
+          <Path>F:\\NetKVM\\2k22\\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+          <Path>F:\\Balloon\\2k22\\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+          <Path>F:\\vioserial\\2k22\\amd64</Path>
         </PathAndCredentials>
       </DriverPaths>
     </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>100</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/INDEX</Key>
+              <Value>2</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>UDS Administrator</FullName>
+        <Organization>Defense Unicorns</Organization>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>{computer_name}</ComputerName>
+      <TimeZone>UTC</TimeZone>
+    </component>
   </settings>
   <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
         <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
         <NetworkLocation>Work</NetworkLocation>
-        <ProtectYourPC>1</ProtectYourPC>
+        <ProtectYourPC>3</ProtectYourPC>
       </OOBE>
-      <ComputerName>{name}</ComputerName>
       <UserAccounts>
         <AdministratorPassword>
-          <Value>UDS-TempPass-ChangeMe!</Value>
+          <Value>{admin_password}</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
       </UserAccounts>
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell -Command "Start-Process msiexec.exe -ArgumentList '/i D:\\virtio-win-gt-x64.msi /qn /norestart' -Wait"</CommandLine>
-          <Description>Install VirtIO guest drivers and QEMU guest agent</Description>
+          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\\,E:\\,F:\\ -Filter 'qemu-ga-x86_64.msi' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {{ Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }}"</CommandLine>
+          <Description>Install QEMU Guest Agent</Description>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>
   </settings>
 </unattend>"""
-        return {
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": {
-                "name": f"{name}-cloudinit",
-                "namespace": namespace,
-                "labels": {
-                    "app.kubernetes.io/name": name,
-                    "app.kubernetes.io/managed-by": "uds-vm-operator",
-                    "uds.dev/nist-control": "AC-3",
-                },
-                "ownerReferences": [owner_ref],
-            },
-            "type": "Opaque",
-            "stringData": {
-                "autounattend.xml": unattend_xml,
-                "unattend.xml": unattend_xml,
-                "userdata": f"#ps1_sysnative\nWrite-Host 'UDS Windows VM initialized: {name}'\n",
-            },
-        }
+
+
+def build_cloudinit_secret(
+    name: str,
+    namespace: str,
+    spec: Dict[str, Any],
+    owner_ref: Dict[str, Any],
+    admin_password: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Build a hardened Cloud-Init / Sysprep Secret enforcing SSH/Admin password security
+    and optional FIPS mode (NIST 800-53 AC-3 / IA-5).
+    """
+    is_windows = spec.get("osType") == "windows"
 
     sec = spec.get("securityProfile", {})
     disallow_ssh_pw = sec.get("disallowSSHPassword", True)
@@ -174,6 +269,15 @@ def build_cloudinit_secret(
 
     userdata = "\n".join(lines) + "\n"
 
+    string_data: Dict[str, str] = {
+        "userdata": userdata,
+    }
+
+    if is_windows:
+        unattend_xml = build_windows_autounattend_xml(name, admin_password)
+        string_data["autounattend.xml"] = unattend_xml
+        string_data["unattend.xml"] = unattend_xml
+
     return {
         "apiVersion": "v1",
         "kind": "Secret",
@@ -188,10 +292,12 @@ def build_cloudinit_secret(
             "ownerReferences": [owner_ref],
         },
         "type": "Opaque",
-        "stringData": {
-            "userdata": userdata,
-        },
+        "stringData": string_data,
     }
+
+
+# Backwards compatibility alias
+build_cloud_init_secret = build_cloudinit_secret
 
 
 def build_datavolume(
@@ -297,8 +403,9 @@ def build_virtual_machine(
                 enable_secure_boot_tpm = bool(win_profile["enableSecureBootTPM"])
 
     disk_format = spec.get("disk", {}).get("format", "raw")
+    is_iso = disk_format == "iso"
     root_disk_obj: Dict[str, Any] = {"name": "rootdisk"}
-    if disk_format == "iso":
+    if is_iso:
         root_disk_obj["cdrom"] = {"bus": "sata"}
         root_disk_obj["bootOrder"] = 1
     else:
@@ -311,12 +418,20 @@ def build_virtual_machine(
         {"name": "rootdisk", "dataVolume": {"name": f"{name}-dv"}},
     ]
 
+    if is_iso:
+        disks.append({"name": "installdisk", "disk": {"bus": disk_bus}})
+        volumes.append({
+            "name": "installdisk",
+            "emptyDisk": {"capacity": "40Gi"}
+        })
+
     if is_windows:
+        sysprep_secret_name = win_profile.get("sysprepSecretRef") or f"{name}-cloudinit"
         disks.append({"name": "sysprepdisk", "cdrom": {"bus": "sata"}})
         volumes.append({
             "name": "sysprepdisk",
             "sysprep": {
-                "secret": {"name": f"{name}-cloudinit"}
+                "secret": {"name": sysprep_secret_name}
             }
         })
         if inject_virtio_win:

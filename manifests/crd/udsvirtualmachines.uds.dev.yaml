@@ -93,6 +93,10 @@ spec:
                     persistentTPM:
                       type: boolean
                       default: false
+                    sysprepSecretRef:
+                      type: string
+                    adminPasswordSecretRef:
+                      type: string
                 disk:
                   type: object
                   required:

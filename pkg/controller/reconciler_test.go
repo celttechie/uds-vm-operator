@@ -298,7 +298,7 @@ func TestBuildWindowsVirtualMachineAndSysprep(t *testing.T) {
 		t.Errorf("expected secret name tactical-windows-vm-cloudinit, got %s", sec.Name)
 	}
 	autounattend, ok := sec.StringData["autounattend.xml"]
-	if !ok || !strings.Contains(autounattend, "<ComputerName>tactical-windows-vm</ComputerName>") {
+	if !ok || !strings.Contains(autounattend, "<ComputerName>TACTICAL-WINDOW</ComputerName>") {
 		t.Errorf("expected autounattend.xml with ComputerName, got:\n%s", autounattend)
 	}
 	if !strings.Contains(autounattend, "<AdministratorPassword>") {
@@ -395,3 +395,125 @@ func TestBuildWindowsVirtualMachineAndSysprep(t *testing.T) {
 		t.Errorf("expected volume 2 to be virtio-win-drivers, got %v", driverVol["name"])
 	}
 }
+
+func TestWindowsSysprepAndCredentials(t *testing.T) {
+	// 1. Test GenerateSecurePassword meeting DISA STIG complexity
+	pw, err := GenerateSecurePassword(24)
+	if err != nil {
+		t.Fatalf("GenerateSecurePassword failed: %v", err)
+	}
+	if len(pw) != 24 {
+		t.Errorf("expected password length 24, got %d", len(pw))
+	}
+	var hasUpper, hasLower, hasDigit, hasSymbol bool
+	for _, r := range pw {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			hasUpper = true
+		case r >= 'a' && r <= 'z':
+			hasLower = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case strings.ContainsRune("!@#$%^&*-_=+", r):
+			hasSymbol = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit || !hasSymbol {
+		t.Errorf("password %q failed DISA STIG complexity (upper=%v, lower=%v, digit=%v, symbol=%v)",
+			pw, hasUpper, hasLower, hasDigit, hasSymbol)
+	}
+
+	// 2. Test Custom SysprepSecretRef in BuildVirtualMachine
+	customVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-win-vm",
+			Namespace: "default",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType: "windows",
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				SysprepSecretRef: "enterprise-custom-unattend-secret",
+			},
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType:       "upload",
+				Checksum:         "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+				VirtualSizeBytes: 10 * 1024 * 1024,
+			},
+		},
+	}
+	vmObj := BuildVirtualMachine(customVM)
+	tmplSpec := vmObj.Object["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})
+	volumes := tmplSpec["volumes"].([]interface{})
+	sysprepVol := volumes[1].(map[string]interface{})
+	sysprepSecret := sysprepVol["sysprep"].(map[string]interface{})["secret"].(map[string]interface{})["name"]
+	if sysprepSecret != "enterprise-custom-unattend-secret" {
+		t.Errorf("expected custom sysprep secret enterprise-custom-unattend-secret, got %v", sysprepSecret)
+	}
+
+	// 3. Test BuildCloudInitSecret with custom password
+	sec := BuildCloudInitSecret(customVM, "SecretP@ssw0rd!2026")
+	xmlContent := sec.StringData["autounattend.xml"]
+	if !strings.Contains(xmlContent, "<Value>SecretP@ssw0rd!2026</Value>") {
+		t.Errorf("expected injected password in autounattend.xml")
+	}
+	if !strings.Contains(xmlContent, "<Path>F:\\amd64\\2k22</Path>") {
+		t.Errorf("expected VirtIO driver search path in autounattend.xml")
+	}
+	if !strings.Contains(xmlContent, "qemu-ga-x86_64.msi") {
+		t.Errorf("expected QEMU guest agent install in FirstLogonCommands")
+	}
+}
+
+func TestWindowsISOInstallationDiskAttachment(t *testing.T) {
+	isoVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tactical-iso-win-vm",
+			Namespace: "default",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType: "windows",
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType: "upload",
+				Format:     "iso",
+			},
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				DiskBus: "virtio",
+			},
+		},
+	}
+	vmObj := BuildVirtualMachine(isoVM)
+	tmplSpec := vmObj.Object["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})
+	domain := tmplSpec["domain"].(map[string]interface{})
+	devices := domain["devices"].(map[string]interface{})
+	disks := devices["disks"].([]interface{})
+	volumes := tmplSpec["volumes"].([]interface{})
+
+	var foundInstallDisk, foundInstallVol bool
+	for _, d := range disks {
+		dm := d.(map[string]interface{})
+		if dm["name"] == "installdisk" {
+			foundInstallDisk = true
+			diskMap := dm["disk"].(map[string]interface{})
+			if diskMap["bus"] != "virtio" {
+				t.Errorf("expected installdisk bus virtio, got %v", diskMap["bus"])
+			}
+		}
+	}
+	for _, v := range volumes {
+		vm := v.(map[string]interface{})
+		if vm["name"] == "installdisk" {
+			foundInstallVol = true
+			emptyDisk := vm["emptyDisk"].(map[string]interface{})
+			if emptyDisk["capacity"] != "40Gi" {
+				t.Errorf("expected emptyDisk capacity 40Gi, got %v", emptyDisk["capacity"])
+			}
+		}
+	}
+	if !foundInstallDisk {
+		t.Errorf("expected installdisk in disks")
+	}
+	if !foundInstallVol {
+		t.Errorf("expected installdisk in volumes")
+	}
+}
+
