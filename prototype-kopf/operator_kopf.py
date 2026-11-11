@@ -275,7 +275,7 @@ def build_virtual_machine(
     disk_bus = "virtio"
     nic_model = "virtio"
     inject_virtio_win = False
-    virtio_win_image = "quay.io/kubevirt/virtio-win-container-disk:latest"
+    virtio_win_image = "quay.io/kubevirt/virtio-container-disk:20261111_6cefb75928"
     enable_hyperv = False
     enable_secure_boot_tpm = False
 
@@ -296,8 +296,16 @@ def build_virtual_machine(
             if "enableSecureBootTPM" in win_profile:
                 enable_secure_boot_tpm = bool(win_profile["enableSecureBootTPM"])
 
+    disk_format = spec.get("disk", {}).get("format", "raw")
+    root_disk_obj: Dict[str, Any] = {"name": "rootdisk"}
+    if disk_format == "iso":
+        root_disk_obj["cdrom"] = {"bus": "sata"}
+        root_disk_obj["bootOrder"] = 1
+    else:
+        root_disk_obj["disk"] = {"bus": disk_bus}
+
     disks: List[Dict[str, Any]] = [
-        {"name": "rootdisk", "disk": {"bus": disk_bus}},
+        root_disk_obj,
     ]
     volumes: List[Dict[str, Any]] = [
         {"name": "rootdisk", "dataVolume": {"name": f"{name}-dv"}},

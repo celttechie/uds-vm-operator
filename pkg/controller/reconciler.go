@@ -312,7 +312,7 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 	diskBus := "virtio"
 	nicModel := "virtio"
 	injectVirtioWinISO := false
-	virtioWinImage := "quay.io/kubevirt/virtio-win-container-disk:latest"
+	virtioWinImage := "quay.io/kubevirt/virtio-container-disk:20261111_6cefb75928"
 	enableHyperV := false
 	enableSecureBootTPM := false
 
@@ -343,13 +343,22 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 		}
 	}
 
+	rootDiskObj := map[string]interface{}{
+		"name": "rootdisk",
+	}
+	if udsvm.Spec.Disk.Format == "iso" {
+		rootDiskObj["cdrom"] = map[string]interface{}{
+			"bus": "sata",
+		}
+		rootDiskObj["bootOrder"] = int64(1)
+	} else {
+		rootDiskObj["disk"] = map[string]interface{}{
+			"bus": diskBus,
+		}
+	}
+
 	disks := []interface{}{
-		map[string]interface{}{
-			"name": "rootdisk",
-			"disk": map[string]interface{}{
-				"bus": diskBus,
-			},
-		},
+		rootDiskObj,
 	}
 	volumes := []interface{}{
 		map[string]interface{}{
@@ -726,6 +735,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
+	} else {
+		existingVM.Object["spec"] = vm.Object["spec"]
+		existingVM.SetLabels(vm.GetLabels())
+		existingVM.SetOwnerReferences(vm.GetOwnerReferences())
+		if err := r.Update(ctx, existingVM); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	// 5. Evaluate and update status directly onto UDSVirtualMachine

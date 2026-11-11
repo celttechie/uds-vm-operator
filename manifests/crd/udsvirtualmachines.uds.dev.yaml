@@ -83,7 +83,7 @@ spec:
                       default: true
                     virtioWinImage:
                       type: string
-                      default: "quay.io/kubevirt/virtio-win-container-disk:latest"
+                      default: "quay.io/kubevirt/virtio-container-disk:20261111_6cefb75928"
                     enableHyperVEnlightenments:
                       type: boolean
                       default: true
@@ -107,7 +107,7 @@ spec:
                       type: string
                     format:
                       type: string
-                      enum: ["raw", "qcow2"]
+                      enum: ["raw", "qcow2", "iso"]
                       default: "raw"
                     virtualSizeBytes:
                       type: integer
