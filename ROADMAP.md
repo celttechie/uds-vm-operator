@@ -12,11 +12,10 @@ gantt
     dateFormat  YYYY-MM-DD
     section Completed
     v0.1.0 Core Operator & Air-Gap Integrity :done, 2026-11-01, 2026-11-11
+    v0.2.0 Windows VM Automation & STIG      :done, 2026-11-11, 2026-11-11
+    v0.3.0 Go CLI (uds-vmctl) & Zarf Pkg     :done, 2026-11-11, 2026-11-11
     section Active
-    v0.2.0 Windows VM Automation & STIG      :active, 2026-11-11, 2026-11-20
-    section Planned
-    v0.3.0 Go CLI (uds-vmctl) & Zarf Pkg     :2026-11-21, 2026-12-05
-    v0.4.0 UDS Observability & Continuous ATO:2026-12-06, 2026-12-20
+    v0.4.0 UDS Observability & Continuous ATO:active, 2026-11-11, 2026-11-25
 ```
 
 ---
@@ -36,7 +35,7 @@ Establish the declarative `UDSVirtualMachine` CustomResourceDefinition and demon
 
 ---
 
-## [Milestone v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) — Windows VM Automation, Hyper-V Enlightenments & STIG Hardening (ACTIVE)
+## [Milestone v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) — Windows VM Automation, Hyper-V Enlightenments & STIG Hardening (COMPLETED)
 
 ### Objective:
 Automate mission-critical Windows Server / Windows 11 virtual machines on KubeVirt, eliminating the 4 classic failure modes (`0x7B` BSODs, CPU spinlock stalls, TPM/UEFI boot rejection, and Sysprep answer file injection).
@@ -51,22 +50,25 @@ Automate mission-critical Windows Server / Windows 11 virtual machines on KubeVi
 
 ---
 
-## [Milestone v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) — Go CLI (`uds-vmctl`) & Zarf Air-Gap Packaging (PLANNED)
+## [Milestone v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) — Go CLI (`uds-vmctl`) & Zarf Air-Gap Packaging (COMPLETED)
 
 ### Objective:
 Provide a standalone, air-gap ready Go CLI for offline VM preparation and lifecycle controls, paired with Defense Unicorns Zarf packaging definitions.
 
-### Planned Capabilities:
+### Key Capabilities Delivered:
 - **Go CLI (`uds-vmctl`):**
-  - `uds-vmctl prep <image>`: Standalone Go binary parsing QCOW2 headers and raw images, computing SHA-256 digests, and outputting `UDSVirtualMachine` and `zarf.yaml` declarations.
-  - `uds-vmctl power [start|stop|restart] <vm>`: Operator power controls orchestrating KubeVirt `runStrategy` transitions.
-  - `uds-vmctl inventory`: Tabular cluster inventory reporting VM status, OS type, PVC sizing, and STIG compliance.
-- **Zarf Package Definition (`zarf.yaml`):**
-  - Standalone `.tar.zst` air-gap bundle containing operator image, CDI controller/uploadproxy, and sample tactical VM disk payloads for one-command field deployment (`zarf package deploy`).
+  - `uds-vmctl prep <image>`: Standalone Go binary parsing QCOW2 and RAW binary headers natively, strictly enforcing standalone air-gap flattened disks (rejecting external backing files), streaming SHA-256 digests, computing deterministic `+6%` PVC padding, and generating `UDSVirtualMachine` and `zarf.yaml` declarations.
+  - `uds-vmctl power [start|stop|restart] <vm>`: Operator power controls orchestrating KubeVirt `runStrategy` transitions (`Always` vs `Halted`) via `client-go`.
+  - `uds-vmctl inventory`: Real-time tabular cluster inventory reporting namespace, phase, OS type, PVC sizing, checksum verification, zero-trust network posture, reconciler identity, and age.
+  - `uds-vmctl version`: Dynamic build metadata (commit, date, semantic version) injected via `ldflags`.
+- **Defense Unicorns Zarf Air-Gap Packaging (`zarf.yaml`):**
+  - Production Zarf package definition bundling CRDs, Operator Deployment & RBAC, pre-validated Golden OS image fixtures with SHA-256 integrity, and sample workloads into a single offline `.tar.zst` air-gap distribution.
+- **Enterprise Build Pipeline (`Makefile`):**
+  - Unified targets for multi-binary build (`bin/uds-vm-operator`, `bin/uds-vmctl`), unit testing (`make test`), and Zarf air-gap package assembly (`make zarf-package`).
 
 ---
 
-## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — Defense Unicorns Lula (OSCAL) Continuous ATO & Prometheus Observability (PLANNED)
+## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — Defense Unicorns Lula (OSCAL) Continuous ATO & Prometheus Observability (ACTIVE)
 
 ### Objective:
 Bridge the gap between Kubernetes orchestration and federal authorization by implementing machine-readable **OSCAL (Open Security Controls Assessment Language)** with [Defense Unicorns Lula](https://github.com/defenseunicorns/lula), replacing ad-hoc CI checklist assertions with automated, cryptographically signed Continuous ATO (cATO) evidence.

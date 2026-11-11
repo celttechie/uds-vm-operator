@@ -1,14 +1,14 @@
 # UDS Virtual Machine Operator (`uds-vm-operator`)
 
-[![Go Unit Tests](https://img.shields.io/badge/go%20tests-6%2F6%20passed-brightgreen.svg)](pkg/controller/reconciler_test.go)
-[![Python Prototype Tests](https://img.shields.io/badge/pytest-7%2F7%20passed-brightgreen.svg)](prototype-kopf/test_operator_kopf.py)
-[![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7-blue.svg)](manifests/crd/udsvirtualmachines.uds.dev.yaml)
+[![Go Unit Tests](https://img.shields.io/badge/go%20tests-14%2F14%20passed-brightgreen.svg)](pkg/controller/reconciler_test.go)
+[![Zarf Package](https://img.shields.io/badge/zarf-v0.85%2B%20air--gap-blue.svg)](zarf.yaml)
+[![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7%20%7C%20IA--5-blue.svg)](manifests/crd/udsvirtualmachines.uds.dev.yaml)
 [![Upstream CDI PR](https://img.shields.io/badge/CDI%20PR-%234340%20Merged%2FTarget-orange.svg)](https://github.com/kubevirt/containerized-data-importer/pull/4340)
-[![Roadmap](https://img.shields.io/badge/Roadmap-v0.1.0--v0.4.0-purple.svg)](ROADMAP.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-v0.3.0%20Completed-purple.svg)](ROADMAP.md)
 
 An air-gap ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
 
-> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability)](https://github.com/celttechie/uds-vm-operator/milestone/4)).
+> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability & Continuous ATO)](https://github.com/celttechie/uds-vm-operator/milestone/4)).
 
 ---
 
@@ -179,19 +179,68 @@ tactical-sensor-vm   Ready   upload   11Mi       true                true       
 
 ---
 
-## 8. Running the Tests
+## 8. Tactical Edge CLI (`uds-vmctl`)
 
-### Python Kopf Unit Tests:
-```bash
-.venv/bin/pytest -v prototype-kopf/test_operator_kopf.py
+`uds-vmctl` provides field operators and engineers with native Go tools for air-gap preparation, declarative power orchestration, and cluster telemetry without requiring external dependencies (`qemu-img` or Python):
+
+### 1. Air-Gap Disk Inspection & Manifest Generation
+Inspects RAW and QCOW2 binary headers, strictly detects and rejects unflattened external backing chains, streams SHA-256 digests, calculates deterministic `+6%` filesystem padding, and generates manifests:
+```console
+$ ./bin/uds-vmctl prep images/tactical-linux-golden.raw --zarf --name tactical-sensor-vm
+==================================================================
+        UDS AIR-GAP DISK IMAGE INSPECTION & PREPARATION          
+==================================================================
+File:                tactical-linux-golden.raw
+Path:                images/tactical-linux-golden.raw
+Format:              raw
+Virtual Size:        10485760 bytes (0.01 GiB)
+Actual Size:         10485760 bytes (0.01 GiB)
+Required PVC Size:   11Mi (includes +6% filesystem overhead)
+SHA-256 Digest:      sha256:e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+Air-Gap Verified:    PASSED (Standalone, 0 external backing references)
+==================================================================
 ```
 
-### Go Unit Tests:
-```bash
-go test -v ./pkg/controller/...
+### 2. Fleet Telemetry & Inventory
+```console
+$ ./bin/uds-vmctl inventory
+NAMESPACE  NAME                 PHASE  OS       PVC-SIZE  CHECKSUM-VERIFIED  ZERO-TRUST  RECONCILER     AGE
+default    tactical-sensor-vm   Ready  linux    11Mi      true               true        controller-go  5h30m
+default    tactical-windows-vm  Ready  windows  5100Mi    true               true        controller-go  4h12m
 ```
 
-### Building the Operator Binary:
+### 3. Declarative Power State Orchestration
+Transitions `spec.runStrategy` safely between `Always` and `Halted`:
+```console
+$ ./bin/uds-vmctl power restart tactical-sensor-vm
+UDSVirtualMachine default/tactical-sensor-vm restart initiated (runStrategy: Always)
+```
+
+---
+
+## 9. Defense Unicorns Zarf Air-Gap Packaging
+
+The operator and pre-validated golden images are bundled into an offline, cryptographically verifiable Zarf package (`zarf.yaml`):
+
 ```bash
-go build -o bin/uds-vm-operator ./cmd/uds-vm-operator
+# Package the operator CRDs, deployment, RBAC, and Golden Image fixture
+make zarf-package
+
+# Deploy into an air-gapped or disconnected Kubernetes cluster in one command:
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.3.0.tar.zst --confirm
+```
+
+---
+
+## 10. Build & Verification Commands
+
+```bash
+# Compile both the controller and CLI with embedded git commit & version metadata:
+make build
+
+# Run full project unit test suite with data-race detection:
+make test
+
+# Package air-gap Zarf distribution:
+make zarf-package
 ```

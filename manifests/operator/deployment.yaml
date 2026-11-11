@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uds-system
+  labels:
+    uds.dev/managed-by: uds-vm-operator
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: uds-vm-operator
+  namespace: uds-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: uds-vm-operator-role
+rules:
+  - apiGroups: ["uds.dev"]
+    resources: ["udsvirtualmachines"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["uds.dev"]
+    resources: ["udsvirtualmachines/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets", "persistentvolumeclaims", "configmaps", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: uds-vm-operator-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: uds-vm-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: uds-vm-operator
+    namespace: uds-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uds-vm-operator
+  namespace: uds-system
+  labels:
+    app.kubernetes.io/name: uds-vm-operator
+    uds.dev/component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: uds-vm-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: uds-vm-operator
+        uds.dev/component: controller
+    spec:
+      serviceAccountName: uds-vm-operator
+      containers:
+        - name: manager
+          image: ghcr.io/celttechie/uds-vm-operator:v0.3.0
+          command:
+            - /manager
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
