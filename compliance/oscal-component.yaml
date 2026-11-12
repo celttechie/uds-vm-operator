@@ -40,7 +40,7 @@ component-definition:
                   rel: lula
             - uuid: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
               control-id: ia-5
-              description: Authenticator Management - Automated High-Entropy Dynamic Credential Generation for Windows Guests
+              description: Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
               links:
                 - href: '#8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f'
                   rel: lula
@@ -157,6 +157,15 @@ component-definition:
               rego: |
                 package validate
 
+                # Case 1: Linux guest enforces cryptographic key-based auth (disabled passwords)
+                validate {
+                  sec := input.vm_secrets[_]
+                  sec.metadata.name == "tactical-sensor-vm-cloudinit"
+                  raw := base64.decode(sec.data.userdata)
+                  contains(raw, "ssh_pwauth: false")
+                }
+
+                # Case 2: Windows guest enforces >= 24-character high-entropy credentials
                 validate {
                   sec := input.vm_secrets[_]
                   sec.metadata.name == "tactical-windows-vm-admin-credentials"

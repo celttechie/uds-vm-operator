@@ -15,11 +15,11 @@ build-image: build-operator
 
 build-operator:
 	@mkdir -p bin
-	go build -ldflags="$(LDFLAGS)" -o bin/uds-vm-operator ./cmd/uds-vm-operator
+	CGO_ENABLED=0 GOOS=linux go build -ldflags="$(LDFLAGS)" -o bin/uds-vm-operator ./cmd/uds-vm-operator
 
 build-cli:
 	@mkdir -p bin
-	go build -ldflags="$(LDFLAGS)" -o bin/uds-vmctl ./cmd/uds-vmctl
+	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o bin/uds-vmctl ./cmd/uds-vmctl
 
 test:
 	go test -v -race ./...
