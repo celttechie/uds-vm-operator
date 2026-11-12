@@ -49,12 +49,16 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
       - name: Install Defense Unicorns Lula
         run: |
-          curl -sSL https://github.com/defenseunicorns/lula/releases/download/v0.8.0/lula_v0.8.0_linux_amd64 -o /tmp/lula || \
-          curl -sSL https://github.com/defenseunicorns/lula/releases/download/v0.8.0/lula_linux_amd64 -o /tmp/lula
-          chmod +x /tmp/lula
-          sudo mv /tmp/lula /usr/local/bin/lula
+          go install github.com/defenseunicorns/lula@v0.8.0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
           lula version
 
       - name: Validate OSCAL Component Definition Syntax
@@ -70,5 +74,5 @@ jobs:
 
       - name: Validate YAML Formatting
         run: |
-          python3 -c "import yaml, glob; [yaml.safe_load(open(f)) for f in glob.glob('manifests/**/*.yaml', recursive=True)]"
-          python3 -c "import yaml; yaml.safe_load(open('zarf.yaml'))"
+          python3 -c "import yaml, glob; [list(yaml.safe_load_all(open(f))) for f in glob.glob('manifests/**/*.yaml', recursive=True)]"
+          python3 -c "import yaml; list(yaml.safe_load_all(open('zarf.yaml')))"
