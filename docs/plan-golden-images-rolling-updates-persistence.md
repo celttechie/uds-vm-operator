@@ -1,23 +1,25 @@
-# Implementation Plan: Golden Images, Rolling Fleet Updates & Storage Persistence
+# Architecture Proposal: Golden Images, Rolling Fleet Updates & Storage Persistence
 
-**Author:** Antigravity / Engineering Team  
-**Status:** Draft / Planned  
-**Target Milestone:** v0.4.0 & v0.5.0  
+**Author:** Brian Jarrett  
+**Status:** Proposed  
+**Target Release:** v0.5.0  
 **Repository:** [uds-vm-operator](file:///home/bjarrett/Projects/uds-vm-operator)
 
 ---
 
 ## 1. Executive Summary & Goals
 
-This plan defines the architectural design, schema enhancements, and step-by-step test execution roadmap to transition `uds-vm-operator` from single-fixture testing to enterprise production fleet management.
+This document outlines the architectural enhancements required to transition `uds-vm-operator` from single-instance validation to automated, production-grade fleet management.
+
+The primary objective is to allow mission operators to deploy and update fleets of virtual machines seamlessly, ensuring continuous service availability while maintaining strict data integrity and DoD compliance.
 
 ### Key Objectives:
-1. **Real Production Golden Images:** Build and verify standard, air-gapped golden images for both Linux (Ubuntu 22.04 LTS / Rocky 9) and Windows Server 2022 using `uds-vmctl prep`.
-2. **CDI Golden Image Caching & Fast Cloning:** Import and cryptographically verify (NIST SI-7) a golden image once as a CDI `DataSource`, then spin up multiple VMs in seconds via storage-layer Copy-on-Write (CoW) clones without re-uploading disks.
-3. **Dual Workload Persistence Model:**
-   * **Stateless Workloads ("Cattle"):** Disposable, immutable VMs with single root disks that can be destroyed and recreated on demand.
-   * **Stateful Workloads ("Pets with Replaceable Engines"):** Workloads requiring persistent data preservation across operating system upgrades via decoupled secondary data volumes.
-4. **Zero-Downtime Rolling Fleet Updates:** Execute coordinated rolling updates across VM pools (`maxSurge: 1`, `maxUnavailable: 0`) with readiness gates, keeping services available during OS upgrades.
+1. **Production Golden Images:** Build, inspect, and verify standardized, air-gapped golden images for both Linux (Ubuntu 22.04 LTS / Rocky 9) and Windows Server 2022 using the native `uds-vmctl prep` utility.
+2. **Centralized Image Caching & Fast Cloning:** Import and cryptographically verify (NIST SP 800-53 SI-7) golden images once into cluster storage via Containerized Data Importer (CDI) `DataSource` objects. Subsequent virtual machines instantiate in seconds using storage-layer Copy-on-Write (CoW) clones without re-uploading large disk images.
+3. **Dual Storage Architecture:**
+   * **Stateless Workloads:** Disposable, immutable virtual machines where the operating system and runtimes can be replaced or destroyed on demand.
+   * **Stateful Workloads:** Mission-critical services (such as databases and directory services) where application data is strictly preserved across operating system updates via decoupled secondary storage volumes.
+4. **Zero-Downtime Rolling Updates:** Orchestrate coordinated, automated rolling updates across VM pools (`maxSurge: 1`, `maxUnavailable: 0`) governed by guest readiness probes, preventing service outages during OS upgrades and kernel patching.
 
 ---
 

@@ -9,7 +9,7 @@
 
 An air-gap ready reference implementation and contribution-ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
 
-> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability & Continuous ATO)](https://github.com/celttechie/uds-vm-operator/milestone/4)).
+> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability & Continuous ATO)](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ [v0.5.0 Architecture Proposal (Golden Images, Rolling Updates & Persistence)](docs/plan-golden-images-rolling-updates-persistence.md)).
 
 ---
 
@@ -242,7 +242,7 @@ The operator and pre-validated golden images are bundled into an offline, crypto
 make zarf-package
 
 # Deploy into an air-gapped or disconnected Kubernetes cluster in one command:
-zarf package deploy zarf-package-uds-vm-operator-amd64-0.3.0.tar.zst --confirm
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst --confirm
 ```
 
 ---
@@ -279,7 +279,7 @@ sc-7       | satisfied
 | **SC-7** | Boundary Protection | `NetworkPolicy` default-deny ingress & egress restricted to DNS (53) | **Satisfied** |
 | **AC-3** | Access Enforcement | Cloud-Init `Secret` enforces `ssh_pwauth: false` and `disable_root: true` | **Satisfied** |
 | **SI-7** | Information Integrity | CDI `DataVolume` enforces SHA-256 digest verification (PR #4340) | **Satisfied** |
-| **IA-5** | Authenticator Management | Windows Sysprep `Secret` enforces dynamic $\ge 24$-char high-entropy password | **Satisfied** |
+| **IA-5** | Authenticator Management | Linux Cloud-Init enforces key-based auth (`ssh_pwauth: false`) / Windows Sysprep enforces dynamic $\ge 24$-char high-entropy password | **Satisfied** |
 
 ---
 
@@ -313,5 +313,31 @@ make zarf-package
 ```
 
 > 📖 **Hands-On Verification Runbook:** For a complete, step-by-step testing guide to start from scratch on your `kubevirt-dev-platform` VM, execute negative hash tampering tests, deploy via Zarf, and validate Continuous ATO and Prometheus telemetry, see **[`docs/end-to-end-verification-runbook.md`](docs/end-to-end-verification-runbook.md)**.
+
+---
+
+## 13. Next Architecture Phase: Golden Images, Rolling Fleet Updates & Storage Persistence (Milestone v0.5.0)
+
+With single-instance air-gap lifecycle verification, Continuous ATO, and Prometheus telemetry fully validated in `v0.4.0`, the operator's next evolution transitions from individual VM orchestration to automated enterprise fleet management.
+
+The complete architectural proposal, CRD schemas, and verification matrix are detailed in **[`docs/plan-golden-images-rolling-updates-persistence.md`](docs/plan-golden-images-rolling-updates-persistence.md)**.
+
+### Architectural Pillars of Milestone v0.5.0:
+
+1. **Production Golden OS Images:**
+   - Standardized, minimal Ubuntu 22.04 LTS / Rocky Linux 9 and Windows Server 2022 golden images.
+   - Pre-flight binary inspection and SHA-256 digest validation natively via `uds-vmctl prep`.
+2. **Centralized Image Caching & Copy-on-Write (CoW) Fast Cloning:**
+   - Ingestion and cryptographic verification (NIST SP 800-53 SI-7) executed once into cluster storage via Containerized Data Importer (CDI) `DataSource` objects.
+   - Child virtual machines instantiate in seconds via storage-layer CoW clones without redundant network or disk transfers.
+3. **Dual Storage Topology (Stateless vs. Stateful Workloads):**
+   - **Stateless Fleets:** Disposable, immutable virtual machines where the root operating system disk is replaced or destroyed on demand.
+   - **Stateful Workloads:** Mission-critical services (databases, directory services) where application data is strictly preserved across operating system updates via decoupled secondary `dataDisks` bound to independent, retained PVCs.
+4. **Zero-Downtime Rolling Fleet Updates:**
+   - Introduction of `UDSVirtualMachinePool` orchestrating coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`).
+   - Guest readiness verification governed by QEMU Guest Agent health, application port probes, and answer-script completion before traffic cutover.
+
+For full architectural diagrams, implementation phases, and test scenarios, review the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md).
+
 
 
