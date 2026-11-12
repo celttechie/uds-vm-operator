@@ -961,6 +961,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	// 5. Evaluate and update status directly onto UDSVirtualMachine
 	newStatus := EvaluateStatusFromDataVolume(udsvm, dvObj, reconcilerID)
 
+	// Record Prometheus compliance and telemetry metrics
+	RecordComplianceMetrics(udsvm.Name, udsvm.Namespace,
+		newStatus.Compliance.ChecksumVerified,
+		newStatus.Compliance.ZeroTrustIsolated,
+		newStatus.Compliance.CloudInitHardened,
+		udsvm.Spec.OSType == "windows")
+	RecordPhaseMetrics(udsvm.Name, udsvm.Namespace, newStatus.Phase)
+	RecordStorageMetrics(udsvm.Name, udsvm.Namespace, udsvm.Spec.Disk.VirtualSizeBytes, int64(float64(udsvm.Spec.Disk.VirtualSizeBytes)*1.06))
+	ReconcileTotal.WithLabelValues("success").Inc()
+
 	// Preserve condition timestamp if reason and status are identical
 	if len(udsvm.Status.Conditions) > 0 && len(newStatus.Conditions) > 0 {
 		oldCond := udsvm.Status.Conditions[0]

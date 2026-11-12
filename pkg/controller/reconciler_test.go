@@ -6,6 +6,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	udsv1alpha1 "github.com/celttechie/uds-vm-operator/pkg/apis/uds/v1alpha1"
 )
@@ -514,6 +515,44 @@ func TestWindowsISOInstallationDiskAttachment(t *testing.T) {
 	}
 	if !foundInstallVol {
 		t.Errorf("expected installdisk in volumes")
+	}
+}
+
+func TestPrometheusComplianceMetrics(t *testing.T) {
+	RecordComplianceMetrics("test-tactical-vm", "default", true, true, true, false)
+	RecordPhaseMetrics("test-tactical-vm", "default", "Ready")
+	RecordStorageMetrics("test-tactical-vm", "default", 10*1024*1024, 11*1024*1024)
+
+	metricFamilies, err := crmetrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics from registry: %v", err)
+	}
+
+	var foundCompliance, foundPhase, foundStorage bool
+	for _, mf := range metricFamilies {
+		switch mf.GetName() {
+		case "uds_vm_compliance_verified":
+			foundCompliance = true
+			for _, m := range mf.GetMetric() {
+				if m.GetGauge().GetValue() != 1.0 {
+					t.Errorf("expected compliance gauge 1.0, got %f", m.GetGauge().GetValue())
+				}
+			}
+		case "uds_vm_phase_status":
+			foundPhase = true
+		case "uds_vm_storage_overhead_ratio":
+			foundStorage = true
+		}
+	}
+
+	if !foundCompliance {
+		t.Errorf("expected uds_vm_compliance_verified metric family in registry")
+	}
+	if !foundPhase {
+		t.Errorf("expected uds_vm_phase_status metric family in registry")
+	}
+	if !foundStorage {
+		t.Errorf("expected uds_vm_storage_overhead_ratio metric family in registry")
 	}
 }
 

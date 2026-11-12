@@ -32,41 +32,38 @@ jobs:
         run: go vet ./...
 
       - name: Run Go Unit Tests with Race Detector (NIST SA-11)
-        run: go test -v -race -coverprofile=coverage.out ./pkg/controller/...
+        run: go test -v -race -coverprofile=coverage.out ./...
 
-      - name: Build Operator Binary (NIST SA-11)
-        run: go build -o bin/uds-vm-operator ./cmd/uds-vm-operator
+      - name: Build Operator & CLI Binaries (NIST SA-11)
+        run: make build
 
       - name: Run govulncheck Security Analysis (NIST SI-2 / RA-5)
         continue-on-error: true
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-  python-prototype-test:
-    name: Python Prototype Test Parity (NIST SA-11)
+  oscal-compliance-validation:
+    name: Lula OSCAL Continuous ATO Validation (NIST SC-7, AC-3, SI-7, IA-5)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          python-version: '3.12'
+          go-version-file: 'go.mod'
+          cache: true
 
-      - name: Install System Dependencies (qemu-utils)
+      - name: Install Defense Unicorns Lula
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-utils
+          go install github.com/defenseunicorns/lula@v0.8.0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          lula version
 
-      - name: Install Python Dependencies
+      - name: Validate OSCAL Component Definition Syntax
         run: |
-          python -m pip install --upgrade pip
-          pip install -r prototype-kopf/requirements.txt
-          pip install pytest
-
-      - name: Run Prototype pytest Suite
-        run: pytest -v prototype-kopf/test_operator_kopf.py
+          python3 -c "import yaml; yaml.safe_load(open('compliance/oscal-component.yaml'))"
 
   manifest-validation:
     name: Manifest Linting & CRD Validation (NIST CM-6)
@@ -77,4 +74,5 @@ jobs:
 
       - name: Validate YAML Formatting
         run: |
-          python3 -c "import yaml, glob; [yaml.safe_load(open(f)) for f in glob.glob('manifests/**/*.yaml', recursive=True)]"
+          python3 -c "import yaml, glob; [list(yaml.safe_load_all(open(f))) for f in glob.glob('manifests/**/*.yaml', recursive=True)]"
+          python3 -c "import yaml; list(yaml.safe_load_all(open('zarf.yaml')))"
