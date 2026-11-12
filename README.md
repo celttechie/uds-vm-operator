@@ -312,3 +312,6 @@ make lula-validate
 make zarf-package
 ```
 
+> 📖 **Hands-On Verification Runbook:** For a complete, step-by-step testing guide to start from scratch on your `kubevirt-dev-platform` VM, execute negative hash tampering tests, deploy via Zarf, and validate Continuous ATO and Prometheus telemetry, see **[`docs/end-to-end-verification-runbook.md`](docs/end-to-end-verification-runbook.md)**.
+
+

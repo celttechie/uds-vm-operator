@@ -3,7 +3,7 @@ kind: ZarfPackageConfig
 metadata:
   name: uds-vm-operator
   description: "Defense Unicorns UDS Virtual Machine Operator & Air-Gap Golden Image Package"
-  version: "0.3.0"
+  version: "0.4.0"
   architecture: "amd64"
 
 components:
@@ -24,7 +24,7 @@ components:
         files:
           - manifests/operator/deployment.yaml
     images:
-      - ghcr.io/celttechie/uds-vm-operator:v0.3.0
+      - ghcr.io/celttechie/uds-vm-operator:v0.4.0
 
   - name: golden-images
     required: false
