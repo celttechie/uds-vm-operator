@@ -1,0 +1,166 @@
+component-definition:
+  metadata:
+    title: UDS Virtual Machine Operator Component Definition
+    version: 0.4.0
+    oscal-version: 1.1.2
+    last-modified: 2026-11-11T22:30:00Z
+    parties:
+      - name: Defense Unicorns Unicorn Delivery Service (UDS) Virtualization Team
+        type: organization
+        uuid: a1051832-c39f-4136-8ab6-f6128faaa9d7
+  uuid: ef4e942c-1998-46d7-a5c0-d91298caa521
+  components:
+    - uuid: 3d8a85fc-3087-422b-a139-37a49465be3b
+      type: software
+      title: uds-vm-operator
+      description: Air-gap ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on KubeVirt and Containerized Data Importer (CDI)
+      purpose: Automated virtualization lifecycle, zero-trust network isolation, and STIG hardening across disconnected enclaves
+      control-implementations:
+        - uuid: 0dfab2ab-cd51-480e-95d2-be764904defe
+          source: https://github.com/usnistgov/oscal-content/blob/master/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+          description: NIST SP 800-53 Rev 5 Control Implementations for UDS Virtual Machine Operator
+          implemented-requirements:
+            - uuid: 0d3d77f0-0baa-4ec3-aade-14966c7bfdb9
+              control-id: ac-3
+              description: Access Enforcement - Cloud-Init Hardened Guest Security (Disabled SSH Password & Disabled Root)
+              links:
+                - href: '#ada6226f-8d7f-4b8c-9bea-90606455e273'
+                  rel: lula
+            - uuid: 3c744348-c2e7-48f1-a822-4cda54fc0845
+              control-id: sc-7
+              description: Boundary Protection - Default-Deny Zero-Trust Network Policy with Restricted DNS Egress
+              links:
+                - href: '#a93c8860-4430-4f65-9c8f-68faaef48c77'
+                  rel: lula
+            - uuid: fe6f31c2-86f6-4f89-9b2e-b8f1fb47d4a7
+              control-id: si-7
+              description: Software and Information Integrity - Cryptographic SHA-256 Upload Digest Verification (CDI PR #4340)
+              links:
+                - href: '#50e0667d-80d9-4a3c-9307-a2deed25ffa7'
+                  rel: lula
+            - uuid: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
+              control-id: ia-5
+              description: Authenticator Management - Automated High-Entropy Dynamic Credential Generation for Windows Guests
+              links:
+                - href: '#8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f'
+                  rel: lula
+  back-matter:
+    resources:
+      - uuid: ada6226f-8d7f-4b8c-9bea-90606455e273
+        title: ac-3-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: vm_secrets
+                resource-rule:
+                  group: ""
+                  version: v1
+                  resource: secrets
+                  namespaces:
+                  - default
+            type: kubernetes
+          metadata:
+            name: ac-3-validation
+            uuid: ada6226f-8d7f-4b8c-9bea-90606455e273
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  sec := input.vm_secrets[_]
+                  sec.metadata.name == "tactical-sensor-vm-cloudinit"
+                  raw := base64.decode(sec.data.userdata)
+                  contains(raw, "ssh_pwauth: false")
+                  contains(raw, "disable_root: true")
+                }
+            type: opa
+      - uuid: a93c8860-4430-4f65-9c8f-68faaef48c77
+        title: sc-7-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: vm_netpols
+                resource-rule:
+                  group: networking.k8s.io
+                  version: v1
+                  resource: networkpolicies
+                  namespaces:
+                  - default
+            type: kubernetes
+          metadata:
+            name: sc-7-validation
+            uuid: a93c8860-4430-4f65-9c8f-68faaef48c77
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  netpol := input.vm_netpols[_]
+                  netpol.metadata.name == "tactical-sensor-vm-netpol"
+                  not netpol.spec.ingress
+                  rule := netpol.spec.egress[_]
+                  port := rule.ports[_]
+                  port.port == 53
+                }
+            type: opa
+      - uuid: 50e0667d-80d9-4a3c-9307-a2deed25ffa7
+        title: si-7-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: vm_dvs
+                resource-rule:
+                  group: cdi.kubevirt.io
+                  version: v1beta1
+                  resource: datavolumes
+                  namespaces:
+                  - default
+            type: kubernetes
+          metadata:
+            name: si-7-validation
+            uuid: 50e0667d-80d9-4a3c-9307-a2deed25ffa7
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  dv := input.vm_dvs[_]
+                  dv.metadata.name == "tactical-sensor-vm-dv"
+                  dv.status.phase == "Succeeded"
+                }
+            type: opa
+      - uuid: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f
+        title: ia-5-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: vm_secrets
+                resource-rule:
+                  group: ""
+                  version: v1
+                  resource: secrets
+                  namespaces:
+                  - default
+            type: kubernetes
+          metadata:
+            name: ia-5-validation
+            uuid: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  sec := input.vm_secrets[_]
+                  sec.metadata.name == "tactical-windows-vm-admin-credentials"
+                  raw := base64.decode(sec.data.password)
+                  count(raw) >= 24
+                }
+            type: opa

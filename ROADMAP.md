@@ -14,8 +14,7 @@ gantt
     v0.1.0 Core Operator & Air-Gap Integrity :done, 2026-11-01, 2026-11-11
     v0.2.0 Windows VM Automation & STIG      :done, 2026-11-11, 2026-11-11
     v0.3.0 Go CLI (uds-vmctl) & Zarf Pkg     :done, 2026-11-11, 2026-11-11
-    section Active
-    v0.4.0 UDS Observability & Continuous ATO:active, 2026-11-11, 2026-11-25
+    v0.4.0 Lula cATO & Prometheus Metrics    :done, 2026-11-11, 2026-11-11
 ```
 
 ---
@@ -26,12 +25,12 @@ gantt
 Establish the declarative `UDSVirtualMachine` CustomResourceDefinition and demonstrate the two-stage engineering workflow (Python Kopf rapid prototyping $\rightarrow$ production Go controller-runtime conversion) with zero-downtime controller takeover.
 
 ### Key Capabilities Delivered:
-- **NIST 800-53 SI-7:** Cryptographic upload digest verification (`spec.disk.checksum`) integrating upstream KubeVirt CDI PR [#4340](https://github.com/kubevirt/containerized-data-importer/pull/4340).
+- **NIST 800-53 SI-7:** Cryptographic upload digest verification (`spec.disk.checksum`) integrating upstream KubeVirt CDI PR [#4340](https://github.com/kubevirt/containerized-data-importer/pull/4340) (under review upstream; validated via custom in-cluster CDI build).
 - **NIST 800-53 SC-7:** Automated default-deny zero-trust `NetworkPolicy` restricting virt-launcher egress strictly to CoreDNS (53/UDP/TCP).
 - **NIST 800-53 AC-3 / IA-5:** Hardened Cloud-Init NoCloud Secret generator enforcing disabled SSH passwords, disabled root, and FIPS mode.
 - **Storage Sizing:** Deterministic `+6%` KubeVirt/CDI filesystem allocation padding math protecting PVCs from out-of-space abortion.
 - **Air-Gap Image Pre-Flight CLI:** `vm_prep.py` utility inspecting RAW/QCOW2 disks and rejecting unflattened external backing chains.
-- **Test Parity:** 7 Python `pytest` tests and 6 Go `controller-runtime` unit tests with identical lifecycle test vectors.
+- **Test Parity:** 10 Python `pytest` tests (archived) and 15 Go unit tests (10 controller + 5 CLI) passing with `-race` across identical lifecycle test vectors.
 
 ---
 
@@ -68,18 +67,23 @@ Provide a standalone, air-gap ready Go CLI for offline VM preparation and lifecy
 
 ---
 
-## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — Defense Unicorns Lula (OSCAL) Continuous ATO & Prometheus Observability (ACTIVE)
+## [Milestone v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) — Defense Unicorns Lula (OSCAL) Continuous ATO & Prometheus Observability (COMPLETED)
 
 ### Objective:
 Bridge the gap between Kubernetes orchestration and federal authorization by implementing machine-readable **OSCAL (Open Security Controls Assessment Language)** with [Defense Unicorns Lula](https://github.com/defenseunicorns/lula), replacing ad-hoc CI checklist assertions with automated, cryptographically signed Continuous ATO (cATO) evidence.
 
-### Planned Capabilities:
+### Key Capabilities Delivered:
 - **Defense Unicorns Lula OSCAL Integration:**
   - `compliance/oscal-component.yaml`: Machine-readable OSCAL component definition detailing controls `SC-7` (Zero Trust Boundary), `AC-3` (Access Enforcement), `SI-7` (Integrity & PR #4340 Checksums), and `IA-5` (Credential Management).
   - Automated Lula validation rules evaluating live KubeVirt child objects (`NetworkPolicy`, `Secret`, `DataVolume`) using Kubernetes domain providers.
-  - `lula validate` step in GitHub Actions producing signed `assessment-results.yaml` artifacts on every merge.
-- **Custom Prometheus Metrics:**
-  - `uds_vm_compliance_verified{vm="...", control="SI-7|SC-7|AC-3"}`: Gauges reporting real-time compliance posture linked to OSCAL control IDs.
-  - `uds_vm_storage_overhead_ratio`: Metrics tracking allocated PVC capacity vs virtual disk size.
+  - Generates machine-readable `compliance/assessment-results.yaml` Security Assessment Results (SAR) artifacts via `make lula-validate`.
+- **Custom Prometheus Metrics (`pkg/controller/metrics.go`):**
+  - `uds_vm_compliance_verified{vm="...", control="SI-7|SC-7|AC-3|IA-5"}`: Gauges reporting real-time compliance posture directly linked to OSCAL control IDs.
+  - `uds_vm_storage_overhead_ratio`: Gauges tracking allocated PVC capacity vs virtual disk size (`+6%` sizing math).
   - `uds_vm_phase_status`: High-cardinality status gauges tracking `WaitingForUpload`, `Provisioning`, and `Ready`.
-- **Grafana Dashboard Definition:** Declarative dashboard JSON visualizing fleet virtualization health, resource overhead, and automated cATO compliance evidence.
+  - `uds_vm_reconcile_total`: Counter tracking total successful and errored controller loops.
+- **Declarative Grafana Dashboard (`dashboards/uds-vm-overview.json`):**
+  - Production dashboard visualizing fleet virtualization health, storage overhead efficiency, and live continuous ATO evidence.
+- **Enterprise CI/CD Integration (`.github/workflows/ci.yaml`):**
+  - Full Go static analysis, race-detected testing, and automated Lula OSCAL compliance verification.
+

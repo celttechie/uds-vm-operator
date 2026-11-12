@@ -1,6 +1,6 @@
-.PHONY: all build build-operator build-cli test clean zarf-package
+.PHONY: all build build-operator build-cli build-image test clean zarf-package lula-validate
 
-VERSION ?= v0.3.0
+VERSION ?= v0.4.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -24,8 +24,13 @@ build-cli:
 test:
 	go test -v -race ./...
 
+KUBECONFIG ?= $(shell [ -f $(HOME)/Projects/kubevirt-dev-platform/kubeconfig ] && echo $(HOME)/Projects/kubevirt-dev-platform/kubeconfig || echo $(HOME)/.kube/config)
+
+lula-validate:
+	KUBECONFIG=$(KUBECONFIG) lula validate -f compliance/oscal-component.yaml -o compliance/assessment-results.yaml --non-interactive
+
 zarf-package:
 	zarf package create . --confirm --skip-sbom
 
 clean:
-	rm -rf bin/ *.tar.zst /tmp/zarf-*
+	rm -rf bin/ *.tar.zst /tmp/zarf-* compliance/assessment-results.yaml
