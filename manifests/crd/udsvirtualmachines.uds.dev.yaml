@@ -101,13 +101,15 @@ spec:
                   type: object
                   required:
                     - sourceType
-                    - checksum
-                    - virtualSizeBytes
                   properties:
                     sourceType:
                       type: string
-                      enum: ["upload", "http"]
+                      enum: ["upload", "http", "dataSource"]
                     httpUrl:
+                      type: string
+                    dataSourceName:
+                      type: string
+                    dataSourceNamespace:
                       type: string
                     format:
                       type: string
@@ -121,6 +123,32 @@ spec:
                       pattern: "^(md5|sha1|sha256|sha512):[a-fA-F0-9]+$"
                     storageClassName:
                       type: string
+                dataDisks:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - size
+                    properties:
+                      name:
+                        type: string
+                      size:
+                        type: string
+                      bus:
+                        type: string
+                        enum: ["virtio", "sata", "scsi"]
+                        default: "virtio"
+                      storageClassName:
+                        type: string
+                      pvcName:
+                        type: string
+                      retentionPolicy:
+                        type: string
+                        enum: ["Retain", "Delete"]
+                        default: "Delete"
+                      mountPath:
+                        type: string
                 securityProfile:
                   type: object
                   properties:

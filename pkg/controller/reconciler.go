@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -367,38 +368,63 @@ func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPass
 }
 
 // BuildDataVolume builds a CDI DataVolume resource with cryptographic checksum validation
-// (leveraging PR #4340, NIST 800-53 SI-7) and automatic +6% filesystem overhead sizing.
+// (leveraging PR #4340, NIST 800-53 SI-7) or DataSource cloning, and automatic +6% filesystem overhead sizing.
 func BuildDataVolume(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Unstructured {
 	ownerRef := BuildOwnerReference(udsvm)
-	pvcSize := CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
 	sourceType := udsvm.Spec.Disk.SourceType
 	if sourceType == "" {
 		sourceType = "upload"
 	}
 
-	sourceSpec := map[string]interface{}{}
-	if sourceType == "upload" {
-		sourceSpec["upload"] = map[string]interface{}{
-			"checksum": udsvm.Spec.Disk.Checksum,
+	dvSpec := map[string]interface{}{}
+
+	if sourceType == "dataSource" {
+		sourceRef := map[string]interface{}{
+			"kind": "DataSource",
+			"name": udsvm.Spec.Disk.DataSourceName,
 		}
-	} else if sourceType == "http" {
-		sourceSpec["http"] = map[string]interface{}{
-			"url":      udsvm.Spec.Disk.HTTPURL,
-			"checksum": udsvm.Spec.Disk.Checksum,
+		if udsvm.Spec.Disk.DataSourceNamespace != "" {
+			sourceRef["namespace"] = udsvm.Spec.Disk.DataSourceNamespace
+		} else {
+			sourceRef["namespace"] = udsvm.Namespace
 		}
+		dvSpec["sourceRef"] = sourceRef
+	} else {
+		sourceSpec := map[string]interface{}{}
+		if sourceType == "upload" {
+			sourceSpec["upload"] = map[string]interface{}{
+				"checksum": udsvm.Spec.Disk.Checksum,
+			}
+		} else if sourceType == "http" {
+			sourceSpec["http"] = map[string]interface{}{
+				"url":      udsvm.Spec.Disk.HTTPURL,
+				"checksum": udsvm.Spec.Disk.Checksum,
+			}
+		}
+		dvSpec["source"] = sourceSpec
 	}
 
 	storageSpec := map[string]interface{}{
 		"accessModes": []interface{}{"ReadWriteOnce"},
-		"resources": map[string]interface{}{
+	}
+	if udsvm.Spec.Disk.VirtualSizeBytes > 0 {
+		pvcSize := CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
+		storageSpec["resources"] = map[string]interface{}{
 			"requests": map[string]interface{}{
 				"storage": pvcSize,
 			},
-		},
+		}
+	} else if sourceType != "dataSource" {
+		storageSpec["resources"] = map[string]interface{}{
+			"requests": map[string]interface{}{
+				"storage": "10Gi",
+			},
+		}
 	}
 	if udsvm.Spec.Disk.StorageClassName != "" {
 		storageSpec["storageClassName"] = udsvm.Spec.Disk.StorageClassName
 	}
+	dvSpec["storage"] = storageSpec
 
 	dv := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -426,10 +452,7 @@ func BuildDataVolume(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Unstruc
 					},
 				},
 			},
-			"spec": map[string]interface{}{
-				"source":  sourceSpec,
-				"storage": storageSpec,
-			},
+			"spec": dvSpec,
 		},
 	}
 	return dv
@@ -584,6 +607,32 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 		})
 	}
 
+	// Secondary persistent data disks
+	for _, dd := range udsvm.Spec.DataDisks {
+		bus := dd.Bus
+		if bus == "" {
+			bus = "virtio"
+		}
+		diskName := fmt.Sprintf("datadisk-%s", dd.Name)
+		claimName := dd.PVCName
+		if claimName == "" {
+			claimName = fmt.Sprintf("%s-data-%s", udsvm.Name, dd.Name)
+		}
+
+		disks = append(disks, map[string]interface{}{
+			"name": diskName,
+			"disk": map[string]interface{}{
+				"bus": bus,
+			},
+		})
+		volumes = append(volumes, map[string]interface{}{
+			"name": diskName,
+			"persistentVolumeClaim": map[string]interface{}{
+				"claimName": claimName,
+			},
+		})
+	}
+
 	iface := map[string]interface{}{
 		"name":       "default",
 		"masquerade": map[string]interface{}{},
@@ -701,13 +750,69 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 	return vm
 }
 
+// BuildDataDiskPVC constructs a PersistentVolumeClaim for secondary storage.
+// If retentionPolicy is "Retain", OwnerReferences are omitted so the PVC survives VM deletion.
+func BuildDataDiskPVC(udsvm *udsv1alpha1.UDSVirtualMachine, dd *udsv1alpha1.DataDiskSpec) *corev1.PersistentVolumeClaim {
+	claimName := dd.PVCName
+	if claimName == "" {
+		claimName = fmt.Sprintf("%s-data-%s", udsvm.Name, dd.Name)
+	}
+
+	storageQty := resource.MustParse(dd.Size)
+	pvc := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "PersistentVolumeClaim",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      claimName,
+			Namespace: udsvm.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       udsvm.Name,
+				"app.kubernetes.io/managed-by": "uds-vm-operator",
+				"uds.dev/disk-name":            dd.Name,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: storageQty,
+				},
+			},
+		},
+	}
+
+	if dd.StorageClassName != "" {
+		pvc.Spec.StorageClassName = &dd.StorageClassName
+	}
+
+	retention := dd.RetentionPolicy
+	if retention == "" {
+		retention = "Delete"
+	}
+	pvc.Labels["uds.dev/retention-policy"] = retention
+
+	if strings.EqualFold(retention, "Delete") {
+		ownerRef := BuildOwnerReference(udsvm)
+		pvc.OwnerReferences = []metav1.OwnerReference{ownerRef}
+	}
+
+	return pvc
+}
+
 // EvaluateStatusFromDataVolume evaluates the observed state from the child CDI DataVolume.
 func EvaluateStatusFromDataVolume(
 	udsvm *udsv1alpha1.UDSVirtualMachine,
 	dvObj *unstructured.Unstructured,
 	reconcilerID string,
 ) udsv1alpha1.UDSVirtualMachineStatus {
-	pvcSize := CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
+	pvcSize := "auto"
+	if udsvm.Spec.Disk.VirtualSizeBytes > 0 {
+		pvcSize = CalculatePVCSizeMiB(udsvm.Spec.Disk.VirtualSizeBytes)
+	}
 	zeroTrust := true
 	if udsvm.Spec.SecurityProfile.ZeroTrustNetwork != nil {
 		zeroTrust = *udsvm.Spec.SecurityProfile.ZeroTrustNetwork
@@ -758,8 +863,13 @@ func EvaluateStatusFromDataVolume(
 			} else if dvPhase == "Succeeded" {
 				phase = "Ready"
 				reason = "ChecksumVerified"
-				message = fmt.Sprintf("Disk image imported and verified against %s", udsvm.Spec.Disk.Checksum)
-				checksumVerified = true
+				if sourceType == "dataSource" {
+					message = fmt.Sprintf("Cloned from DataSource %s", udsvm.Spec.Disk.DataSourceName)
+					checksumVerified = true
+				} else {
+					message = fmt.Sprintf("Disk image imported and verified against %s", udsvm.Spec.Disk.Checksum)
+					checksumVerified = true
+				}
 			} else if dvPhase == "UploadReady" || dvPhase == "WaitForFirstConsumer" || dvPhase == "Pending" {
 				if sourceType == "upload" {
 					phase = "WaitingForUpload"
@@ -938,7 +1048,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		dvObj = existingDV
 	}
 
-	// 4. Reconcile KubeVirt VirtualMachine
+	// 4. Reconcile Secondary Data Volume Claims (dataDisks)
+	for i := range udsvm.Spec.DataDisks {
+		dd := &udsvm.Spec.DataDisks[i]
+		if dd.PVCName == "" {
+			dataPVC := BuildDataDiskPVC(udsvm, dd)
+			existingPVC := &corev1.PersistentVolumeClaim{}
+			err = r.Get(ctx, types.NamespacedName{Name: dataPVC.Name, Namespace: dataPVC.Namespace}, existingPVC)
+			if apierrors.IsNotFound(err) {
+				if err := r.Create(ctx, dataPVC); err != nil && !apierrors.IsAlreadyExists(err) {
+					return reconcile.Result{}, err
+				}
+			} else if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
+	// 5. Reconcile KubeVirt VirtualMachine
 	vm := BuildVirtualMachine(udsvm)
 	existingVM := &unstructured.Unstructured{}
 	existingVM.SetGroupVersionKind(vm.GroupVersionKind())

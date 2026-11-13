@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// ListInventory fetches all UDSVirtualMachine instances and formats them as a clean CLI table.
+// ListInventory fetches all UDSVirtualMachine instances and formats them as a clean CLI table to stdout.
 func ListInventory(ctx context.Context, kubeconfig, namespace string) error {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
@@ -25,7 +26,13 @@ func ListInventory(ctx context.Context, kubeconfig, namespace string) error {
 		return fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
+	return ListInventoryWithClient(ctx, dynClient, namespace, os.Stdout)
+}
+
+// ListInventoryWithClient queries UDSVirtualMachines via dynamic.Interface and writes the formatted table to out.
+func ListInventoryWithClient(ctx context.Context, dynClient dynamic.Interface, namespace string, out io.Writer) error {
 	var unstrList *unstructured.UnstructuredList
+	var err error
 	if namespace != "" {
 		unstrList, err = dynClient.Resource(udsvmGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	} else {
@@ -35,7 +42,7 @@ func ListInventory(ctx context.Context, kubeconfig, namespace string) error {
 		return fmt.Errorf("failed to query UDSVirtualMachine resources: %w", err)
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
 	fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tOS\tPVC-SIZE\tCHECKSUM-VERIFIED\tZERO-TRUST\tRECONCILER\tAGE")
 
 	for _, item := range unstrList.Items {

@@ -32,6 +32,15 @@ func PowerAction(ctx context.Context, kubeconfig, namespace, vmName, action stri
 		return "", fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
+	return PowerActionWithClient(ctx, dynClient, namespace, vmName, action)
+}
+
+// PowerActionWithClient executes a power transition using an injected dynamic client interface.
+func PowerActionWithClient(ctx context.Context, dynClient dynamic.Interface, namespace, vmName, action string) (string, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
 	udsvmClient := dynClient.Resource(udsvmGVR).Namespace(namespace)
 	udsvm, err := udsvmClient.Get(ctx, vmName, metav1.GetOptions{})
 	if err != nil {

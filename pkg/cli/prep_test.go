@@ -153,11 +153,33 @@ func TestGenerateUDSVirtualMachineYAML(t *testing.T) {
 
 	// Test Golden Image cloned Windows VM
 	yamlGolden := GenerateUDSVirtualMachineYAML(info, "tactical-win-vm", "windows", true)
-	if !strings.Contains(yamlGolden, "sourceType: pvc") {
-		t.Errorf("expected sourceType pvc for golden image, got:\n%s", yamlGolden)
+	if !strings.Contains(yamlGolden, "sourceType: dataSource") {
+		t.Errorf("expected sourceType dataSource for golden image, got:\n%s", yamlGolden)
+	}
+	if !strings.Contains(yamlGolden, "dataSourceName: tactical-win-vm-golden") {
+		t.Errorf("expected dataSourceName in manifest, got:\n%s", yamlGolden)
 	}
 	if !strings.Contains(yamlGolden, "osType: windows") {
 		t.Errorf("expected osType windows, got:\n%s", yamlGolden)
+	}
+}
+
+func TestGenerateCDIDataSourceYAML(t *testing.T) {
+	info := &DiskInfo{
+		Filename:          "ubuntu-2204.raw",
+		CalculatedPVCSize: "11Mi",
+		ChecksumSHA256:    "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+	}
+
+	dsYAML := GenerateCDIDataSourceYAML(info, "ubuntu-2204-golden", "uds-golden-images")
+	if !strings.Contains(dsYAML, "kind: DataVolume") || !strings.Contains(dsYAML, "kind: DataSource") {
+		t.Errorf("expected DataVolume and DataSource in generated YAML, got:\n%s", dsYAML)
+	}
+	if !strings.Contains(dsYAML, "name: ubuntu-2204-golden") {
+		t.Errorf("expected name ubuntu-2204-golden in manifest")
+	}
+	if !strings.Contains(dsYAML, "checksum: sha256:abcd1234") {
+		t.Errorf("expected checksum in manifest")
 	}
 }
 
