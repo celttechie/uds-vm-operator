@@ -201,3 +201,9 @@ func TestGenerateZarfComponentYAML(t *testing.T) {
 		t.Errorf("expected raw hex shasum without sha256: prefix, got:\n%s", zarfSnippet)
 	}
 }
+
+func TestDefaultResourceName(t *testing.T) {
+	if got := DefaultResourceName("Win_2022_Golden.qcow2"); got != "win-2022-golden" {
+		t.Errorf("expected 'win-2022-golden', got %q", got)
+	}
+}

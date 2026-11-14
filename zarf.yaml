@@ -3,7 +3,7 @@ kind: ZarfPackageConfig
 metadata:
   name: uds-vm-operator
   description: "Defense Unicorns UDS Virtual Machine Operator & Air-Gap Golden Image Package"
-  version: "0.4.0"
+  version: "0.5.0"
   architecture: "amd64"
 
 components:
@@ -24,7 +24,7 @@ components:
         files:
           - manifests/operator/deployment.yaml
     images:
-      - ghcr.io/celttechie/uds-vm-operator:v0.4.0
+      - ghcr.io/celttechie/uds-vm-operator:v0.5.0
 
   - name: golden-images
     required: false
@@ -33,6 +33,15 @@ components:
       - source: images/tactical-linux-golden.raw
         target: /var/uds/images/tactical-linux-golden.raw
         shasum: e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+
+  - name: golden-image-datasource
+    required: false
+    description: "Provision central CDI DataVolume & DataSource in uds-golden-images for fast cloning"
+    manifests:
+      - name: golden-image-datasource
+        noWait: true
+        files:
+          - manifests/examples/golden-image-datasource.yaml
 
   - name: sample-vm
     default: true
@@ -47,5 +56,14 @@ components:
         after:
           - cmd: "kubectl wait --for=condition=Ready udsvm/tactical-sensor-vm -n default --timeout=60s || true"
             description: "Wait for UDSVirtualMachine readiness"
-          - cmd: "./bin/uds-vmctl inventory --kubeconfig /home/bjarrett/Projects/kubevirt-dev-platform/kubeconfig"
-            description: "Display UDSVirtualMachine fleet inventory"
+          - cmd: "kubectl get udsvirtualmachines -A || true"
+            description: "Display UDSVirtualMachine fleet status"
+
+  - name: fast-clone-vm
+    required: false
+    description: "Sample fast-cloned UDSVirtualMachine with persistent retained dataDisk"
+    manifests:
+      - name: fast-clone-vm
+        namespace: default
+        files:
+          - manifests/examples/fast-clone-persistent-vm.yaml

@@ -111,11 +111,16 @@ func GenerateUDSVirtualMachineYAML(info *DiskInfo, vmName, osType string, isGold
 	return GenerateUDSVirtualMachineYAMLWithDataSource(info, vmName, osType, isGoldenImage, "", "")
 }
 
+// DefaultResourceName derives a Kubernetes-safe resource name from an image filename.
+func DefaultResourceName(filename string) string {
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return strings.ToLower(strings.ReplaceAll(base, "_", "-"))
+}
+
 // GenerateUDSVirtualMachineYAMLWithDataSource outputs a declarative Kubernetes manifest targeting an optional DataSource.
 func GenerateUDSVirtualMachineYAMLWithDataSource(info *DiskInfo, vmName, osType string, isGoldenImage bool, dsName, dsNamespace string) string {
 	if vmName == "" {
-		base := strings.TrimSuffix(info.Filename, filepath.Ext(info.Filename))
-		vmName = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
+		vmName = DefaultResourceName(info.Filename)
 	}
 	if osType == "" {
 		osType = "linux"
@@ -165,8 +170,7 @@ spec:
 // GenerateCDIDataSourceYAML outputs the central CDI DataVolume and DataSource manifests for the golden image.
 func GenerateCDIDataSourceYAML(info *DiskInfo, sourceName, namespace string) string {
 	if sourceName == "" {
-		base := strings.TrimSuffix(info.Filename, filepath.Ext(info.Filename))
-		sourceName = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
+		sourceName = DefaultResourceName(info.Filename)
 	}
 	if namespace == "" {
 		namespace = "uds-golden-images"

@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uds-golden-images
+  labels:
+    uds.dev/managed-by: uds-vm-operator
+    # Prevent Zarf mutating webhook from rewriting CDI importer/cloner pod images
+    zarf.dev/agent: ignore
+---
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: tactical-linux-golden
+  namespace: uds-golden-images
+  labels:
+    uds.dev/golden-image: "true"
+    uds.dev/nist-control: "SI-7"
+  annotations:
+    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+spec:
+  source:
+    upload:
+      checksum: sha256:e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 11Mi
+---
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataSource
+metadata:
+  name: tactical-linux-golden
+  namespace: uds-golden-images
+  labels:
+    uds.dev/golden-image: "true"
+spec:
+  source:
+    pvc:
+      name: tactical-linux-golden
+      namespace: uds-golden-images
