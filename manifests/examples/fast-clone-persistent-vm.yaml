@@ -1,0 +1,32 @@
+apiVersion: uds.dev/v1alpha1
+kind: UDSVirtualMachine
+metadata:
+  name: tactical-fast-clone-vm
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tactical-fast-clone-vm
+    app.kubernetes.io/managed-by: uds-vmctl
+    uds.dev/security-tier: mission-critical
+  annotations:
+    uds.dev/air-gap-verified: "true"
+spec:
+  osType: linux
+  cpus: 2
+  memory: 1Gi
+  runStrategy: Always
+  disk:
+    sourceType: dataSource
+    dataSourceName: tactical-linux-golden
+    dataSourceNamespace: uds-golden-images
+    format: raw
+    virtualSizeBytes: 10485760
+    checksum: sha256:e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+  dataDisks:
+    - name: mission-data
+      size: 1Gi
+      bus: virtio
+      retentionPolicy: Retain
+  securityProfile:
+    zeroTrustNetwork: true
+    disallowSSHPassword: true
+    fipsMode: true

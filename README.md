@@ -1,11 +1,11 @@
 # UDS Virtual Machine Operator (`uds-vm-operator`)
 
-[![Go Unit Tests](https://img.shields.io/badge/go%20tests-33%2F33%20passed%20(74%25%20cov)-brightgreen.svg)](pkg/controller/reconciler_test.go)
+[![Go Unit Tests](https://img.shields.io/badge/go%20tests-39%2F39%20passed%20-brightgreen.svg)](pkg/controller/reconciler_test.go)
 [![Lula OSCAL](https://img.shields.io/badge/Lula%20OSCAL-100%25%20Satisfied%20(cATO)-brightgreen.svg)](compliance/oscal-component.yaml)
 [![Zarf Package](https://img.shields.io/badge/zarf-v0.85%2B%20air--gap-blue.svg)](zarf.yaml)
 [![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7%20%7C%20IA--5-blue.svg)](compliance/oscal-component.yaml)
 [![Upstream CDI PR](https://img.shields.io/badge/CDI%20PR-%234340%20Under%20Review-orange.svg)](https://github.com/kubevirt/containerized-data-importer/pull/4340)
-[![Roadmap](https://img.shields.io/badge/Roadmap-v0.4.0%20Completed-purple.svg)](ROADMAP.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-v0.5.0%20In%20Progress-purple.svg)](ROADMAP.md)
 
 An air-gap ready reference implementation and contribution-ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
 
@@ -239,13 +239,11 @@ The operator and pre-validated golden images are bundled into an offline, crypto
 
 ```bash
 # Package the operator CRDs, deployment, RBAC, and Golden Image fixture
-make zarf-package
+make zarf-build
 
 # Deploy into an air-gapped or disconnected Kubernetes cluster in one command:
-zarf package deploy zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst --confirm
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.0.tar.zst --confirm
 ```
-
----
 
 ---
 
@@ -302,40 +300,38 @@ A production-ready declarative dashboard is provided in [`dashboards/uds-vm-over
 # Compile both the controller and CLI with embedded git commit & version metadata:
 make build
 
-# Run full project unit test suite (33 tests across controller, CLI, API types) with data-race detection:
+# Run full project unit test suite (39 tests across controller, CLI, API types) with data-race detection:
 make test
 
 # Run live Defense Unicorns Lula OSCAL compliance validation:
 make lula-validate
 
-# Package air-gap Zarf distribution:
-make zarf-package
+# Build operator image and package air-gap Zarf distribution:
+make zarf-build
 ```
 
 > 📖 **Hands-On Verification Runbook:** For a complete, step-by-step testing guide to start from scratch on your `kubevirt-dev-platform` VM, execute negative hash tampering tests, deploy via Zarf, and validate Continuous ATO and Prometheus telemetry, see **[`docs/end-to-end-verification-runbook.md`](docs/end-to-end-verification-runbook.md)**.
 
 ---
 
-## 13. Next Architecture Phase: Golden Images, Rolling Fleet Updates & Storage Persistence (Milestone v0.5.0)
+## 13. Current Architecture Phase: Golden Images, Rolling Fleet Updates & Storage Persistence (Milestone v0.5.0)
 
-With single-instance air-gap lifecycle verification, Continuous ATO, and Prometheus telemetry fully validated in `v0.4.0`, the operator's next evolution transitions from individual VM orchestration to automated enterprise fleet management.
+With single-instance air-gap lifecycle verification, Continuous ATO, and Prometheus telemetry validated in `v0.4.0`, **Milestone v0.5.0** transitions the operator to automated enterprise fleet management.
 
 The complete architectural proposal, CRD schemas, and verification matrix are detailed in **[`docs/plan-golden-images-rolling-updates-persistence.md`](docs/plan-golden-images-rolling-updates-persistence.md)**.
 
 ### Architectural Pillars of Milestone v0.5.0:
 
-1. **Production Golden OS Images:**
-   - Standardized, minimal Ubuntu 22.04 LTS / Rocky Linux 9 and Windows Server 2022 golden images.
-   - Pre-flight binary inspection and SHA-256 digest validation natively via `uds-vmctl prep`.
-2. **Centralized Image Caching & Copy-on-Write (CoW) Fast Cloning:**
-   - Ingestion and cryptographic verification (NIST SP 800-53 SI-7) executed once into cluster storage via Containerized Data Importer (CDI) `DataSource` objects.
-   - Child virtual machines instantiate in seconds via storage-layer CoW clones without redundant network or disk transfers.
-3. **Dual Storage Topology (Stateless vs. Stateful Workloads):**
+1. **Centralized Image Caching & Copy-on-Write (CoW) Fast Cloning (`Phase 5A` — Implemented in PR #10):**
+   - Ingestion and cryptographic verification (NIST SP 800-53 SI-7) executed once into cluster storage via Containerized Data Importer (CDI) `DataSource` objects (`sourceType: dataSource`).
+   - `uds-vmctl prep --golden-image --data-source-name <name>` emits both the central CDI `DataVolume`/`DataSource` manifests and consumer `UDSVirtualMachine` manifests.
+2. **Dual Storage Topology (`Phase 5A` — Implemented in PR #10):**
    - **Stateless Fleets:** Disposable, immutable virtual machines where the root operating system disk is replaced or destroyed on demand.
-   - **Stateful Workloads:** Mission-critical services (databases, directory services) where application data is strictly preserved across operating system updates via decoupled secondary `dataDisks` bound to independent, retained PVCs.
-4. **Zero-Downtime Rolling Fleet Updates:**
-   - Introduction of `UDSVirtualMachinePool` orchestrating coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`).
-   - Guest readiness verification governed by QEMU Guest Agent health, application port probes, and answer-script completion before traffic cutover.
+   - **Stateful Workloads:** Decoupled secondary `spec.dataDisks[]` bound to independent PVCs (`retentionPolicy: Retain` omits `OwnerReferences` so data survives VM recreation).
+3. **Zarf v0.5.0 Air-Gap Golden Image Bundle (`Phase 5B` — PR #11):**
+   - `zarf.yaml` bundles `crds`, `operator:v0.5.0`, `golden-image-datasource`, and `fast-clone-vm` into a single air-gap `.tar.zst` distribution.
+4. **Zero-Downtime Rolling Fleet Updates (`Phase 5C` — Planned):**
+   - Introduction of `UDSVirtualMachinePool` orchestrating coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`) with guest readiness verification.
 
 For full architectural diagrams, implementation phases, and test scenarios, review the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md).
 

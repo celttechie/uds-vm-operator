@@ -91,24 +91,28 @@ Bridge the gap between Kubernetes orchestration and federal authorization by imp
 
 ---
 
-## [Milestone v0.5.0](docs/plan-golden-images-rolling-updates-persistence.md) — Golden Image Caching, Fleet Updates & Storage Persistence (PLANNED)
+## [Milestone v0.5.0](docs/plan-golden-images-rolling-updates-persistence.md) — Golden Image Caching, Fleet Updates & Storage Persistence (IN PROGRESS)
 
 ### Objective:
 Transition the operator from single-instance validation to automated enterprise fleet management, enabling zero-downtime rolling updates, centralized golden image caching via CDI `DataSource` objects, and stateful storage persistence.
 
 Detailed architectural specifications, CRD schemas, and testing runbooks are maintained in the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md).
 
-### Planned Capabilities:
-- **Standardized Golden Images:**
-  - Build and pre-flight verify minimal Ubuntu 22.04 LTS / Rocky Linux 9 and Windows Server 2022 golden disk images using native `uds-vmctl prep`.
-- **Centralized Image Caching & Fast Copy-on-Write (CoW) Cloning:**
-  - Import and cryptographically verify (NIST SP 800-53 SI-7) golden images once into cluster storage via Containerized Data Importer (CDI) `DataSource` objects.
-  - Instantiate new VM instances in seconds via storage-layer CoW clones without repeated network transfer.
-- **Dual Storage Topology (Stateless vs. Stateful Workloads):**
-  - *Stateless Fleets:* Disposable, immutable virtual machines where the root operating system disk is replaced or destroyed on demand.
-  - *Stateful Workloads:* Mission-critical services (databases, directory services) where application data is strictly preserved across operating system updates via decoupled secondary `dataDisks` bound to independent, retained PVCs.
-- **Zero-Downtime Rolling Fleet Updates:**
-  - Introduce `UDSVirtualMachinePool` to orchestrate coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`).
+### Delivered Capabilities (Phases 5A & 5B):
+- **Centralized Image Caching & Fast Copy-on-Write (CoW) Cloning (PR #10):**
+  - Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) to `UDSVirtualMachine` and `BuildDataVolume` (`spec.sourceRef`).
+  - Extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns` to emit central CDI `DataVolume`/`DataSource` manifests alongside consumer VM manifests.
+  - Verified live cross-namespace CoW cloning (`uds-golden-images` $\rightarrow$ `default`) on `kubevirt-sandbox`.
+- **Dual Storage Topology (`spec.dataDisks[]`, PR #10):**
+  - Added decoupled secondary `dataDisks` supporting `virtio`/`sata` buses and `retentionPolicy: Retain` vs `Delete` (omitting `OwnerReferences` on retained PVCs so data survives VM deletion).
+- **Zarf v0.5.0 Air-Gap Golden Image Bundle (PR #11):**
+  - Updated `zarf.yaml` to `0.5.0` with `golden-image-datasource` and `fast-clone-vm` components and verified live `zarf package deploy` on `kubevirt-sandbox`.
+
+### Remaining Planned Capabilities (Phase 5C):
+- **Zero-Downtime Rolling Fleet Updates (`UDSVirtualMachinePool`):**
+  - Orchestrate coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`).
   - Enforce guest readiness verification (QEMU Guest Agent health, application port probes, and answer-script completion) before traffic cutover.
+- **Lula OSCAL Updates for DataDisks & DataSources:**
+  - Extend `compliance/oscal-component.yaml` to validate `DataSource` and retained `dataDisks` compliance.
 
 

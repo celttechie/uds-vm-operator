@@ -70,10 +70,14 @@ We are deliberately executing a **two-stage operator engineering workflow**:
   - Custom Prometheus metrics (`uds_vm_compliance_verified`, `uds_vm_storage_overhead_ratio`, `uds_vm_phase_status`, `uds_vm_reconcile_total`).
   - Declarative Grafana dashboard (`dashboards/uds-vm-overview.json`) visualizing fleet telemetry and real-time cATO evidence.
   - Updated CI/CD workflow (`.github/workflows/ci.yaml`) with Lula validation and pure Go analysis.
+- **v0.5.0 (Phases 5A & 5B) — CDI DataSource Fast Cloning, Persistent `dataDisks`, & Zarf v0.5.0 Bundle (PR #10, PR #11):**
+  - Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) and `spec.dataDisks[]` (`retentionPolicy: Retain|Delete`) with live cross-namespace CoW clone and PVC retention verification on `kubevirt-sandbox`.
+  - Extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns`.
+  - Updated `zarf.yaml` and operator image to `v0.5.0` with `golden-image-datasource` and `fast-clone-vm` components; verified live `zarf package deploy`.
 
 ---
 
 ## 5. Production Readiness & Roadmap Summary
 
-All 4 roadmap milestones ([v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4)) are **100% complete, tested, and validated** against the live K3s / KubeVirt cluster using Defense Unicorns' modern toolchain (`zarf`, `lula`, `client-go`).
+Milestones [v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) through [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) are **100% complete**, and **v0.5.0 Phases 5A & 5B** are **complete and live-verified** against the K3s / KubeVirt cluster using Defense Unicorns' toolchain (`zarf`, `lula`, `client-go`). Phase 5C (`UDSVirtualMachinePool` rolling fleet updates and expanded Lula OSCAL rules) is next.
 

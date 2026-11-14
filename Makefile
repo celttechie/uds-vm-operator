@@ -1,6 +1,6 @@
 .PHONY: all build build-operator build-cli build-image test clean zarf-package lula-validate
 
-VERSION ?= v0.4.0
+VERSION ?= v0.5.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -11,7 +11,7 @@ all: test build
 build: build-operator build-cli
 
 build-image: build-operator
-	docker build -t ghcr.io/celttechie/uds-vm-operator:$(VERSION) .
+	docker build -t ghcr.io/celttechie/uds-vm-operator:$(VERSION) -t ghcr.io/celttechie/uds-vm-operator:latest .
 
 build-operator:
 	@mkdir -p bin
@@ -31,6 +31,8 @@ lula-validate:
 
 zarf-package:
 	zarf package create . --confirm --skip-sbom
+
+zarf-build: build-image zarf-package
 
 clean:
 	rm -rf bin/ *.tar.zst /tmp/zarf-* compliance/assessment-results.yaml

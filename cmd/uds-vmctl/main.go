@@ -109,8 +109,12 @@ UDSVirtualMachine YAML and Zarf component definitions.`,
 			}
 
 			if generateZarf {
+				compBase := vmName
+				if compBase == "" {
+					compBase = cli.DefaultResourceName(info.Filename)
+				}
 				fmt.Println("\n--- Zarf Component Definition ---")
-				fmt.Print(cli.GenerateZarfComponentYAML(info, vmName+"-image", info.Path))
+				fmt.Print(cli.GenerateZarfComponentYAML(info, compBase+"-image", info.Path))
 			}
 
 			return nil
