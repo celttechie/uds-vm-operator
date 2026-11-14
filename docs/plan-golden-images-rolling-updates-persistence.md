@@ -3,7 +3,7 @@
 **Author:** Brian Jarrett  
 **Status:** Implemented (v0.5.0 / v0.5.1)  
 **Target Release:** v0.5.0  
-**Repository:** [uds-vm-operator](file:///home/bjarrett/Projects/uds-vm-operator)
+**Repository:** [uds-vm-operator](..)
 
 ---
 

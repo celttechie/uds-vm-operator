@@ -101,11 +101,11 @@ Detailed architectural specifications, CRD schemas, and decisions are maintained
 - **Centralized Image Caching & Fast Copy-on-Write (CoW) Cloning (Phase 5A, PR #10):**
   - Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) to `UDSVirtualMachine` and `BuildDataVolume` (`spec.sourceRef`).
   - Extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns` to emit central CDI `DataVolume`/`DataSource` manifests alongside consumer VM manifests.
-  - Verified live cross-namespace CoW cloning (`uds-golden-images` $\rightarrow$ `default`) on `kubevirt-sandbox`.
+  - Verified live cross-namespace CoW cloning (`uds-golden-images` $\rightarrow$ `default`) on a live KubeVirt/CDI cluster.
 - **Dual Storage Topology (`spec.dataDisks[]`, Phase 5A, PR #10):**
   - Added decoupled secondary `dataDisks` supporting `virtio`/`sata` buses and `retentionPolicy: Retain` vs `Delete` (omitting `OwnerReferences` on retained PVCs so data survives VM deletion).
 - **Zarf v0.5.0 Air-Gap Golden Image Bundle (Phase 5B, PR #11):**
-  - Updated `zarf.yaml` to `0.5.0` with `golden-image-datasource` (`noWait: true`) and `fast-clone-vm` components and verified live `zarf package deploy` on `kubevirt-sandbox`.
+  - Updated `zarf.yaml` to `0.5.0` with `golden-image-datasource` (`noWait: true`) and `fast-clone-vm` components and verified live `zarf package deploy` in-cluster.
 - **Zero-Downtime Rolling Fleet Updates (`UDSVirtualMachinePool`, Phase 5C, PR #12):**
   - Added `UDSVirtualMachinePool` (`udsvmpool`) CRD and `PoolReconciler` orchestrating coordinated rolling updates (`maxSurge: 1`, `maxUnavailable: 0`) with deterministic template revision hashing and readiness-gated draining.
   - Formalized Architecture Decision Records in [`docs/adr/`](docs/adr/) (`0001`, `0002`, `0003`).
@@ -120,7 +120,7 @@ Detailed architectural specifications, CRD schemas, and decisions are maintained
 - **Two-Stage Windows Golden Image Factory & Sysprep Modes ([ADR 0004](docs/adr/0004-windows-two-stage-golden-image-factory.md), [ADR 0005](docs/adr/0005-windows-sysprep-provisioning-modes.md)):**
   - Added `windowsProfile.provisioningMode` (`iso | clone | auto`) and `SanitizePoolNetBIOSName` for deterministic 15-character Windows NetBIOS hostnames across pooled replicas.
   - Added Packer/DISM `.msu` slipstreaming and in-cluster clone-and-patch tooling (`images/windows/`), DISA STIG baseline automation (`images/windows/scripts/apply-disa-stig.ps1`), and [Windows Lifecycle & STIG Runbook](docs/windows-lifecycle-and-stig-runbook.md).
-  - Validated live Windows Server 2022 `v1` $\rightarrow$ `v2` golden image build and zero-downtime `UDSVirtualMachinePool` rolling update (`maxSurge: 1`, `maxUnavailable: 0`) on `kubevirt-sandbox`.
+  - Validated live Windows Server 2022 `v1` $\rightarrow$ `v2` golden image build and zero-downtime `UDSVirtualMachinePool` rolling update (`maxSurge: 1`, `maxUnavailable: 0`) in-cluster.
 - **Full-Stack Security Audit & Remediation (`v0.6.0-sec`, [Security Audit Report](docs/security-audit-and-remediation.md)):**
   - Eliminated all 10 `HIGH` Go dependency CVEs (`golang.org/x/net`, `x/oauth2`, `x/text`) and 2 `HIGH` `musl` container CVEs by migrating `Dockerfile` to `gcr.io/distroless/static:nonroot` (`USER 65532:65532`).
   - Hardened `manifests/operator/deployment.yaml` with pod/container `securityContext` (`runAsNonRoot: true`, `seccompProfile: RuntimeDefault`), verified `0` `HIGH`/`CRITICAL` CVEs via Trivy, verified live Windows STIG registry/account policies via `qemu-ga`, and verified 4/4 `satisfied` NIST 800-53 controls via `make lula-validate`.

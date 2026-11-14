@@ -1,6 +1,6 @@
 # End-to-End Verification Runbook: Zero-to-Ignition Testing Guide
 
-This runbook provides a complete, step-by-step walkthrough to test `uds-vm-operator` from scratch using your nested `kubevirt-dev-platform` VM (`kubevirt-sandbox`) running K3s, KubeVirt, and the patched CDI build from upstream PR [#4340](https://github.com/kubevirt/containerized-data-importer/pull/4340).
+This runbook provides a complete, step-by-step walkthrough to test `uds-vm-operator` from scratch on a Kubernetes/K3s cluster running KubeVirt and CDI (with upload checksum verification from upstream PR [#4340](https://github.com/kubevirt/containerized-data-importer/pull/4340)).
 
 It specifically walks you through:
 1. **Starting from a clean slate** on your cluster.
@@ -15,11 +15,11 @@ It specifically walks you through:
 
 ## 1. Prerequisites & Cluster Connection
 
-All commands can be executed directly from your workstation inside `/home/bjarrett/Projects/uds-vm-operator`.
+All commands can be executed directly from the root of the `uds-vm-operator` repository.
 
 ### Export Cluster Kubeconfig
 ```bash
-export KUBECONFIG=/home/bjarrett/Projects/kubevirt-dev-platform/kubeconfig
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 ```
 
 ### Verify Cluster Connectivity & Patched CDI
@@ -55,14 +55,8 @@ kubectl get pods -n cdi -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.sp
 >   {"op": "add", "path": "/spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/source/properties/upload/x-kubernetes-preserve-unknown-fields", "value": true}
 > ]'
 > ```
-
-*(Optional) Direct SSH Access:*
-If you ever need to inspect the sandbox VM directly:
-```bash
-ssh -F /home/bjarrett/Projects/kubevirt-dev-platform/.ssh/config kubevirt-sandbox
-```
-
----
+>
+> ---
 
 ## 2. Resetting the Cluster to a Clean Slate
 
@@ -436,7 +430,7 @@ kubectl get udsvmpool,udsvm -n default
 
 | Purpose | Command |
 | :--- | :--- |
-| **Set Context** | `export KUBECONFIG=/home/bjarrett/Projects/kubevirt-dev-platform/kubeconfig` |
+| **Set Context** | `export KUBECONFIG=~/.kube/config` |
 | **Compile Binaries** | `make build` |
 | **Run Unit Tests** | `make test` |
 | **Inspect Golden Disk** | `./bin/uds-vmctl prep images/tactical-linux-golden.raw --zarf --name tactical-sensor-vm` |

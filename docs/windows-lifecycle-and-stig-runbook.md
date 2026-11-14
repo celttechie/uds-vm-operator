@@ -23,7 +23,7 @@ flowchart LR
 You can create `v1` either **in-cluster** (Stage 1 ISO install for vendor-media chain-of-custody) or **offline** via Packer.
 
 ### Option A1 — In-Cluster Stage 1 ISO Build
-1. **Deploy the Stage 1 Builder VM** ([windows-golden-builder.yaml](file:///home/bjarrett/Projects/uds-vm-operator/manifests/examples/windows-golden-builder.yaml)):
+1. **Deploy the Stage 1 Builder VM** ([windows-golden-builder.yaml](../manifests/examples/windows-golden-builder.yaml)):
    ```bash
    kubectl create namespace uds-golden-images --dry-run=client -o yaml | kubectl apply -f -
    kubectl apply -f manifests/examples/windows-golden-builder.yaml
@@ -37,7 +37,7 @@ You can create `v1` either **in-cluster** (Stage 1 ISO install for vendor-media 
      --no-create --insecure
    ```
 3. **Apply STIG Baseline & Generalize Inside the Builder VM:**
-   Once Windows finishes `oobeSystem` and `qemu-ga` is running, run [`prepare-golden-image.ps1`](file:///home/bjarrett/Projects/uds-vm-operator/images/windows/scripts/prepare-golden-image.ps1) (which invokes [`apply-disa-stig.ps1`](file:///home/bjarrett/Projects/uds-vm-operator/images/windows/scripts/apply-disa-stig.ps1)) and generalizes the disk:
+   Once Windows finishes `oobeSystem` and `qemu-ga` is running, run [`prepare-golden-image.ps1`](../images/windows/scripts/prepare-golden-image.ps1) (which invokes [`apply-disa-stig.ps1`](../images/windows/scripts/apply-disa-stig.ps1)) and generalizes the disk:
    ```powershell
    .\prepare-golden-image.ps1 -RunSysprep
    ```
@@ -82,7 +82,7 @@ To patch `v1` **without** re-running ISO setup:
    *(Tip: If exporting to an air-gapped enclave, `qemu-img convert -c` the PVC image to compressed QCOW2 and run `uds-vmctl prep` so the `v2` artifact carries an immutable `SI-7` SHA-256 in `zarf.yaml`.)*
 
 ### Rolling Out `v2` to the Fleet
-Update `spec.template.spec.disk.dataSourceName` in [windows-server-pool.yaml](file:///home/bjarrett/Projects/uds-vm-operator/manifests/examples/windows-server-pool.yaml) from `windows-server-2022-v1` to `windows-server-2022-v2`:
+Update `spec.template.spec.disk.dataSourceName` in [windows-server-pool.yaml](../manifests/examples/windows-server-pool.yaml) from `windows-server-2022-v1` to `windows-server-2022-v2`:
 ```bash
 kubectl apply -f manifests/examples/windows-server-pool.yaml
 kubectl get udsvmpool win2022-app-pool -w
@@ -99,25 +99,25 @@ DISA STIG controls split cleanly into **Golden-Image-baked controls** (applied b
 
 | Layer | Controls Enforced | Mechanism | Survives `sysprep`? |
 | :--- | :--- | :--- | :--- |
-| **Hardware / Hypervisor** | UEFI Secure Boot, SMM, vTPM 2.0, Hyper-V Enlightenments | [`BuildVirtualMachine`](file:///home/bjarrett/Projects/uds-vm-operator/pkg/controller/reconciler.go) (`enableSecureBootTPM: true`) | N/A (KubeVirt) |
-| **Network Boundary (`SC-7`)** | Default-deny ingress/egress (DNS 53 only) | [`BuildZeroTrustNetworkPolicy`](file:///home/bjarrett/Projects/uds-vm-operator/pkg/controller/reconciler.go) | N/A (Kubernetes) |
-| **OS Baseline (STIG)** | DoD GPOs (`LGPO.exe`), FIPS 140 (`FipsAlgorithmPolicy`), TLS 1.2+, SMBv1 off + SMB signing, LSA `RunAsPPL`, `secedit` Account Lockout/Password Policy, `auditpol`, Firewall | [`apply-disa-stig.ps1`](file:///home/bjarrett/Projects/uds-vm-operator/images/windows/scripts/apply-disa-stig.ps1) | **Yes** |
-| **Per-VM Identity (`IA-5`)** | Unique 24-char Admin password, unique 15-char NetBIOS `ComputerName`, unique machine SID | [`BuildWindowsAutounattendXML`](file:///home/bjarrett/Projects/uds-vm-operator/pkg/controller/reconciler.go) (`specialize` + `oobeSystem`) | Applied post-`sysprep` |
+| **Hardware / Hypervisor** | UEFI Secure Boot, SMM, vTPM 2.0, Hyper-V Enlightenments | [`BuildVirtualMachine`](../pkg/controller/reconciler.go) (`enableSecureBootTPM: true`) | N/A (KubeVirt) |
+| **Network Boundary (`SC-7`)** | Default-deny ingress/egress (DNS 53 only) | [`BuildZeroTrustNetworkPolicy`](../pkg/controller/reconciler.go) | N/A (Kubernetes) |
+| **OS Baseline (STIG)** | DoD GPOs (`LGPO.exe`), FIPS 140 (`FipsAlgorithmPolicy`), TLS 1.2+, SMBv1 off + SMB signing, LSA `RunAsPPL`, `secedit` Account Lockout/Password Policy, `auditpol`, Firewall | [`apply-disa-stig.ps1`](../images/windows/scripts/apply-disa-stig.ps1) | **Yes** |
+| **Per-VM Identity (`IA-5`)** | Unique 24-char Admin password, unique 15-char NetBIOS `ComputerName`, unique machine SID | [`BuildWindowsAutounattendXML`](../pkg/controller/reconciler.go) (`specialize` + `oobeSystem`) | Applied post-`sysprep` |
 
 ### Adding a New DISA STIG Change
-1. Update [`apply-disa-stig.ps1`](file:///home/bjarrett/Projects/uds-vm-operator/images/windows/scripts/apply-disa-stig.ps1) (or drop updated DoD STIG GPO backups into `C:\UDS\STIG\GPOs` for `LGPO.exe`).
+1. Update [`apply-disa-stig.ps1`](../images/windows/scripts/apply-disa-stig.ps1) (or drop updated DoD STIG GPO backups into `C:\UDS\STIG\GPOs` for `LGPO.exe`).
 2. Run **Workflow B2** (or Packer build) to bake the STIG change into Golden Image `v3` and generalize with `sysprep`.
 3. Roll `v3` across the fleet via `UDSVirtualMachinePool`.
 
 ---
 
-## Workflow D: Live Verification on `kubevirt-sandbox`
+## Workflow D: Live Verification
 
 1. **Automated Unit Verification (Local):**
    ```bash
    go test -count=1 -race ./...
    ```
-2. **Cluster Deployment & Compliance Verification (`kubevirt-sandbox`):**
+2. **Cluster Deployment & Compliance Verification:**
    ```bash
    # Apply updated v0.6.0 CRDs
    kubectl apply -f manifests/crd/udsvirtualmachines.uds.dev.yaml

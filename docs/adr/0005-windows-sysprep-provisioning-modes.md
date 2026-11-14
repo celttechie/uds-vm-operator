@@ -5,10 +5,10 @@
 - **Milestone:** v0.6.0 (Windows Server Workload)
 
 ## Context
-Previously, [`BuildWindowsAutounattendXML`](file:///home/bjarrett/Projects/uds-vm-operator/pkg/controller/reconciler.go) generated a single `Autounattend.xml` containing a `<settings pass="windowsPE">` block with `<WillWipeDisk>true</WillWipeDisk>` and `FirstLogonCommands` scanning CD-ROM drives for `qemu-ga-x86_64.msi`. Additionally:
+Previously, [`BuildWindowsAutounattendXML`](../../pkg/controller/reconciler.go) generated a single `Autounattend.xml` containing a `<settings pass="windowsPE">` block with `<WillWipeDisk>true</WillWipeDisk>` and `FirstLogonCommands` scanning CD-ROM drives for `qemu-ga-x86_64.msi`. Additionally:
 1. When booting from a generalized Golden Image (`sourceType: dataSource` or a pre-sysprepped QCOW2 `upload`), `windowsPE` disk-wiping directives are unnecessary and unsafe if an ISO is ever attached, and runtime `qemu-ga` `msiexec` wastes boot time when `qemu-ga` is already slipstreamed.
 2. When `format: iso` was used, `BuildVirtualMachine` attached `installdisk` as an ephemeral `emptyDisk`, preventing the installed OS disk from persisting for `DataSource` promotion.
-3. [`SanitizeNetBIOSName`](file:///home/bjarrett/Projects/uds-vm-operator/pkg/controller/reconciler.go) truncated names to the first 15 characters, which caused all replicas in a `UDSVirtualMachinePool` (e.g., `windows-server-pool-<rev>-<idx>`) to collide on the same Windows `ComputerName`.
+3. [`SanitizeNetBIOSName`](../../pkg/controller/reconciler.go) truncated names to the first 15 characters, which caused all replicas in a `UDSVirtualMachinePool` (e.g., `windows-server-pool-<rev>-<idx>`) to collide on the same Windows `ComputerName`.
 
 ## Decision
 1. **Explicit `windowsProfile.provisioningMode` (`iso | clone | auto`):**

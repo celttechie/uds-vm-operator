@@ -25,7 +25,7 @@ Adopt a **two-stage Golden Image Factory** using **compressed QCOW2** (`qemu-img
    - Verify the single immutable SHA-256 via `uds-vmctl prep --golden-image` and CDI `spec.source.upload.checksum` (`SI-7`).
 
 3. **Cluster Storage & Cloning:**
-   - Target `local-path` as the baseline StorageClass on `kubevirt-sandbox` (keeping Ceph out of scope); CDI automatically performs host-assisted PVC cloning (~30–90s) while keeping the exact same `DataSource` manifests ready for instant CSI CoW clones on Ceph RBD, Longhorn, or TopoLVM.
+   - Target `local-path` as a baseline StorageClass for single-node/dev clusters (without requiring Ceph); CDI automatically performs host-assisted PVC cloning (~30–90s) while keeping the exact same `DataSource` manifests ready for instant CSI CoW clones on Ceph RBD, Longhorn, or TopoLVM.
    - Fleet updates roll out via `UDSVirtualMachinePool` (`maxSurge: 1, maxUnavailable: 0` for stateless/per-replica pools; `strategy.type: Recreate` when sharing a single `ReadWriteOnce` `pvcName` `dataDisk`).
 
 ## Consequences
