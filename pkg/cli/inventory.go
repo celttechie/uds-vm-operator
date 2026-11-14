@@ -43,7 +43,7 @@ func ListInventoryWithClient(ctx context.Context, dynClient dynamic.Interface, n
 	}
 
 	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
-	fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tOS\tPVC-SIZE\tCHECKSUM-VERIFIED\tZERO-TRUST\tRECONCILER\tAGE")
+	fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tSOURCE\tOS\tPVC-SIZE\tCHECKSUM-VERIFIED\tZERO-TRUST\tRECONCILER\tAGE")
 
 	for _, item := range unstrList.Items {
 		ns := item.GetNamespace()
@@ -55,6 +55,11 @@ func ListInventoryWithClient(ctx context.Context, dynClient dynamic.Interface, n
 		osType, _ := spec["osType"].(string)
 		if osType == "" {
 			osType = "linux"
+		}
+		disk, _ := spec["disk"].(map[string]interface{})
+		sourceType, _ := disk["sourceType"].(string)
+		if sourceType == "" {
+			sourceType = "upload"
 		}
 
 		status, _ := item.Object["status"].(map[string]interface{})
@@ -81,8 +86,8 @@ func ListInventoryWithClient(ctx context.Context, dynClient dynamic.Interface, n
 			zeroTrust = "true"
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			ns, name, phase, osType, pvcSize, checksumVerified, zeroTrust, reconciledBy, age)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			ns, name, phase, sourceType, osType, pvcSize, checksumVerified, zeroTrust, reconciledBy, age)
 	}
 
 	return w.Flush()

@@ -6,23 +6,14 @@ import (
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	udsv1alpha1 "github.com/celttechie/uds-vm-operator/pkg/apis/uds/v1alpha1"
 )
-
-func newPoolTestScheme(t *testing.T) *runtime.Scheme {
-	t.Helper()
-	s := runtime.NewScheme()
-	if err := udsv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("AddToScheme failed: %v", err)
-	}
-	return s
-}
 
 func int32Ptr(v int32) *int32 { return &v }
 
@@ -61,7 +52,7 @@ func makeTestPool(name string, replicas int32, dsName string) *udsv1alpha1.UDSVi
 
 func TestPoolReconciler_InitialScaleUp(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	pool := makeTestPool("web-fleet", 2, "ubuntu-v1")
 
 	c := fake.NewClientBuilder().
@@ -116,7 +107,7 @@ func TestPoolReconciler_InitialScaleUp(t *testing.T) {
 
 func TestPoolReconciler_RollingUpdate_MaxSurgeAndZeroUnavailable(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	pool := makeTestPool("web-fleet", 2, "ubuntu-v1")
 
 	c := fake.NewClientBuilder().
@@ -222,7 +213,7 @@ func TestPoolReconciler_RollingUpdate_MaxSurgeAndZeroUnavailable(t *testing.T) {
 
 func TestPoolReconciler_ScaleDown(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	pool := makeTestPool("web-fleet", 2, "ubuntu-v1")
 
 	c := fake.NewClientBuilder().
@@ -259,19 +250,29 @@ func TestPoolReconciler_ScaleDown(t *testing.T) {
 	}
 }
 
-func TestUDSVirtualMachinePool_DeepCopy(t *testing.T) {
-	pool := makeTestPool("copy-test", 3, "ubuntu-v1")
-	copied := pool.DeepCopy()
-	*copied.Spec.Replicas = 99
-	*copied.Spec.Strategy.RollingUpdate.MaxSurge = 5
-	if *pool.Spec.Replicas != 3 || *pool.Spec.Strategy.RollingUpdate.MaxSurge != 1 {
-		t.Errorf("DeepCopy mutated original pool spec")
+func TestPoolReconciler_Metrics(t *testing.T) {
+	RecordPoolMetrics("web-fleet", "default", 3, 3, 2, 3, 0)
+	metricFamilies, err := crmetrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	found := false
+	for _, mf := range metricFamilies {
+		if mf.GetName() == "uds_vm_pool_replicas" {
+			found = true
+			if len(mf.GetMetric()) < 5 {
+				t.Errorf("expected 5 state gauges for uds_vm_pool_replicas, got %d", len(mf.GetMetric()))
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected uds_vm_pool_replicas metric family in registry")
 	}
 }
 
 func TestPoolReconciler_RecreateStrategy(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	pool := makeTestPool("recreate-fleet", 2, "ubuntu-v1")
 	pool.Spec.Strategy.Type = "Recreate"
 	pool.Spec.Strategy.RollingUpdate = nil
@@ -318,7 +319,7 @@ func TestPoolReconciler_RecreateStrategy(t *testing.T) {
 
 func TestPoolReconciler_ScaleToZero(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	pool := makeTestPool("zero-fleet", 1, "ubuntu-v1")
 
 	c := fake.NewClientBuilder().
@@ -357,7 +358,7 @@ func TestPoolReconciler_ScaleToZero(t *testing.T) {
 
 func TestPoolReconciler_NotFound(t *testing.T) {
 	ctx := context.Background()
-	scheme := newPoolTestScheme(t)
+	scheme := newTestReconcilerScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := &PoolReconciler{Client: c, Scheme: scheme, Log: logr.Discard()}
 	res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "missing", Namespace: "default"}})

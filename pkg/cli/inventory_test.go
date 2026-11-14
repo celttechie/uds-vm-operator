@@ -64,12 +64,12 @@ func TestListInventoryWithClient_MultipleVMs(t *testing.T) {
 
 	out := buf.String()
 	// Assert table header
-	if !strings.Contains(out, "NAMESPACE") || !strings.Contains(out, "PVC-SIZE") || !strings.Contains(out, "CHECKSUM-VERIFIED") {
+	if !strings.Contains(out, "NAMESPACE") || !strings.Contains(out, "SOURCE") || !strings.Contains(out, "PVC-SIZE") || !strings.Contains(out, "CHECKSUM-VERIFIED") {
 		t.Errorf("output missing expected table headers: %s", out)
 	}
 
 	// Assert vm1 row
-	if !strings.Contains(out, "tactical-sensor-vm") || !strings.Contains(out, "11Mi") || !strings.Contains(out, "Ready") {
+	if !strings.Contains(out, "tactical-sensor-vm") || !strings.Contains(out, "upload") || !strings.Contains(out, "11Mi") || !strings.Contains(out, "Ready") {
 		t.Errorf("output missing tactical-sensor-vm details: %s", out)
 	}
 

@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -758,7 +759,10 @@ func BuildDataDiskPVC(udsvm *udsv1alpha1.UDSVirtualMachine, dd *udsv1alpha1.Data
 		claimName = fmt.Sprintf("%s-data-%s", udsvm.Name, dd.Name)
 	}
 
-	storageQty := resource.MustParse(dd.Size)
+	storageQty, err := resource.ParseQuantity(dd.Size)
+	if err != nil {
+		storageQty = resource.MustParse("10Gi")
+	}
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -906,6 +910,7 @@ func EvaluateStatusFromDataVolume(
 			{
 				Type:               "Ready",
 				Status:             condStatus,
+				ObservedGeneration: udsvm.Generation,
 				LastTransitionTime: metav1.Now(),
 				Reason:             reason,
 				Message:            message,
@@ -924,6 +929,14 @@ type Reconciler struct {
 
 // Reconcile performs the level-triggered reconciliation loop for UDSVirtualMachine.
 func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+	res, err := r.reconcileVM(ctx, req)
+	if err != nil {
+		ReconcileTotal.WithLabelValues("error").Inc()
+	}
+	return res, err
+}
+
+func (r *Reconciler) reconcileVM(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	udsvm := &udsv1alpha1.UDSVirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, udsvm)
 	if err != nil {
@@ -1052,6 +1065,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	for i := range udsvm.Spec.DataDisks {
 		dd := &udsvm.Spec.DataDisks[i]
 		if dd.PVCName == "" {
+			if _, parseErr := resource.ParseQuantity(dd.Size); parseErr != nil {
+				return reconcile.Result{}, fmt.Errorf("invalid dataDisks[%d].size %q for disk %q: %w", i, dd.Size, dd.Name, parseErr)
+			}
 			dataPVC := BuildDataDiskPVC(udsvm, dd)
 			existingPVC := &corev1.PersistentVolumeClaim{}
 			err = r.Get(ctx, types.NamespacedName{Name: dataPVC.Name, Namespace: dataPVC.Namespace}, existingPVC)
@@ -1085,8 +1101,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		}
 	}
 
-	// 5. Evaluate and update status directly onto UDSVirtualMachine
+	// 6. Evaluate and update status directly onto UDSVirtualMachine
 	newStatus := EvaluateStatusFromDataVolume(udsvm, dvObj, reconcilerID)
+	mergedConditions := make([]metav1.Condition, len(udsvm.Status.Conditions))
+	copy(mergedConditions, udsvm.Status.Conditions)
+	for _, c := range newStatus.Conditions {
+		meta.SetStatusCondition(&mergedConditions, c)
+	}
+	newStatus.Conditions = mergedConditions
 
 	// Record Prometheus compliance and telemetry metrics
 	RecordComplianceMetrics(udsvm.Name, udsvm.Namespace,
@@ -1095,20 +1117,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		newStatus.Compliance.CloudInitHardened,
 		udsvm.Spec.OSType == "windows")
 	RecordPhaseMetrics(udsvm.Name, udsvm.Namespace, newStatus.Phase)
-	RecordStorageMetrics(udsvm.Name, udsvm.Namespace, udsvm.Spec.Disk.VirtualSizeBytes, int64(float64(udsvm.Spec.Disk.VirtualSizeBytes)*1.06))
-	ReconcileTotal.WithLabelValues("success").Inc()
-
-	// Preserve condition timestamp if reason and status are identical
-	if len(udsvm.Status.Conditions) > 0 && len(newStatus.Conditions) > 0 {
-		oldCond := udsvm.Status.Conditions[0]
-		if oldCond.Type == newStatus.Conditions[0].Type &&
-			oldCond.Status == newStatus.Conditions[0].Status &&
-			oldCond.Reason == newStatus.Conditions[0].Reason &&
-			oldCond.Message == newStatus.Conditions[0].Message &&
-			!oldCond.LastTransitionTime.IsZero() {
-			newStatus.Conditions[0].LastTransitionTime = oldCond.LastTransitionTime
-		}
+	if allocatedQty, qtyErr := resource.ParseQuantity(newStatus.CalculatedPVCSize); qtyErr == nil {
+		RecordStorageMetrics(udsvm.Name, udsvm.Namespace, udsvm.Spec.Disk.VirtualSizeBytes, allocatedQty.Value())
 	}
+	ReconcileTotal.WithLabelValues("success").Inc()
 
 	if udsvm.Status.Phase != newStatus.Phase ||
 		udsvm.Status.CalculatedPVCSize != newStatus.CalculatedPVCSize ||

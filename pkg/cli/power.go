@@ -18,10 +18,6 @@ var udsvmGVR = schema.GroupVersionResource{
 
 // PowerAction executes a start, stop, or restart transition on a UDSVirtualMachine.
 func PowerAction(ctx context.Context, kubeconfig, namespace, vmName, action string) (string, error) {
-	if namespace == "" {
-		namespace = "default"
-	}
-
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return "", fmt.Errorf("failed to load kubeconfig: %w", err)
