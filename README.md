@@ -231,7 +231,7 @@ The operator and pre-validated golden images are bundled into an offline, crypto
 make zarf-build
 
 # Deploy into an air-gapped or disconnected Kubernetes cluster in one command:
-zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst --confirm
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.6.0-sec.tar.zst --confirm
 ```
 
 ---
