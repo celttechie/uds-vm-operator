@@ -268,3 +268,100 @@ func TestUDSVirtualMachinePool_DeepCopy(t *testing.T) {
 		t.Errorf("DeepCopy mutated original pool spec")
 	}
 }
+
+func TestPoolReconciler_RecreateStrategy(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPoolTestScheme(t)
+	pool := makeTestPool("recreate-fleet", 2, "ubuntu-v1")
+	pool.Spec.Strategy.Type = "Recreate"
+	pool.Spec.Strategy.RollingUpdate = nil
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(pool).
+		WithStatusSubresource(&udsv1alpha1.UDSVirtualMachinePool{}, &udsv1alpha1.UDSVirtualMachine{}).
+		Build()
+
+	r := &PoolReconciler{Client: c, Scheme: scheme, Log: logr.Discard()}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "recreate-fleet", Namespace: "default"}}
+
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("initial Reconcile failed: %v", err)
+	}
+
+	if err := c.Get(ctx, req.NamespacedName, pool); err != nil {
+		t.Fatalf("get pool failed: %v", err)
+	}
+	pool.Spec.Template.Spec.Disk.DataSourceName = "ubuntu-v2"
+	if err := c.Update(ctx, pool); err != nil {
+		t.Fatalf("update pool failed: %v", err)
+	}
+
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("recreate Reconcile failed: %v", err)
+	}
+
+	v2Rev, _ := ComputeTemplateHash(pool.Spec.Template.Spec)
+	var vms udsv1alpha1.UDSVirtualMachineList
+	if err := c.List(ctx, &vms); err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(vms.Items) != 2 {
+		t.Fatalf("expected 2 v2 VMs after Recreate, got %d", len(vms.Items))
+	}
+	for _, vm := range vms.Items {
+		if vm.Labels[revisionLabelKey] != v2Rev {
+			t.Errorf("expected all VMs on %s, got %s", v2Rev, vm.Labels[revisionLabelKey])
+		}
+	}
+}
+
+func TestPoolReconciler_ScaleToZero(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPoolTestScheme(t)
+	pool := makeTestPool("zero-fleet", 1, "ubuntu-v1")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(pool).
+		WithStatusSubresource(&udsv1alpha1.UDSVirtualMachinePool{}, &udsv1alpha1.UDSVirtualMachine{}).
+		Build()
+
+	r := &PoolReconciler{Client: c, Scheme: scheme, Log: logr.Discard()}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "zero-fleet", Namespace: "default"}}
+
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("initial Reconcile failed: %v", err)
+	}
+
+	if err := c.Get(ctx, req.NamespacedName, pool); err != nil {
+		t.Fatalf("get pool failed: %v", err)
+	}
+	pool.Spec.Replicas = int32Ptr(0)
+	if err := c.Update(ctx, pool); err != nil {
+		t.Fatalf("update pool failed: %v", err)
+	}
+
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("scale-to-zero Reconcile failed: %v", err)
+	}
+
+	var updatedPool udsv1alpha1.UDSVirtualMachinePool
+	if err := c.Get(ctx, req.NamespacedName, &updatedPool); err != nil {
+		t.Fatalf("get pool failed: %v", err)
+	}
+	if updatedPool.Status.Phase != "Ready" || updatedPool.Status.Replicas != 0 {
+		t.Errorf("expected Ready with 0 replicas, got phase=%q replicas=%d", updatedPool.Status.Phase, updatedPool.Status.Replicas)
+	}
+}
+
+func TestPoolReconciler_NotFound(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPoolTestScheme(t)
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := &PoolReconciler{Client: c, Scheme: scheme, Log: logr.Discard()}
+	res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "missing", Namespace: "default"}})
+	if err != nil || res.RequeueAfter != 0 {
+		t.Errorf("expected nil error and empty result for missing pool, got res=%v err=%v", res, err)
+	}
+}

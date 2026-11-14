@@ -1,6 +1,6 @@
 # UDS Virtual Machine Operator (`uds-vm-operator`)
 
-[![Go Unit Tests](https://img.shields.io/badge/go%20tests-43%2F43%20passed-brightgreen.svg)](pkg/controller/reconciler_test.go)
+[![Go Unit Tests](https://img.shields.io/badge/go%20tests-48%2F48%20passed-brightgreen.svg)](pkg/controller/reconciler_test.go)
 [![Lula OSCAL](https://img.shields.io/badge/Lula%20OSCAL-100%25%20Satisfied%20(cATO)-brightgreen.svg)](compliance/oscal-component.yaml)
 [![Zarf Package](https://img.shields.io/badge/zarf-v0.85%2B%20air--gap-blue.svg)](zarf.yaml)
 [![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7%20%7C%20IA--5-blue.svg)](compliance/oscal-component.yaml)
@@ -40,7 +40,7 @@ flowchart TD
 
     subgraph Stage2["Phase 2: Production Conversion (Go / controller-runtime)"]
         E[pkg/apis/uds/v1alpha1] --> F[pkg/controller/reconciler.go]
-        F -->|1:1 Parity Unit Tests| G["go test: 43/43 Passing (-race)"]
+        F -->|1:1 Parity Unit Tests| G["go test: 48/48 Passing (-race)"]
         G --> H[cmd/uds-vm-operator/main.go & cmd/uds-vmctl]
         H --> I[bin/uds-vm-operator & bin/uds-vmctl]
     end
@@ -60,7 +60,7 @@ flowchart TD
    - Preserved in `archive/prototype-kopf/` with 10 passing `pytest` unit tests for historical reference.
 2. **Stage 2 — Production Go Controller & CLI (`pkg/` and `cmd/`):**
    - Transferred 1:1 into Go using `controller-runtime` and `client-go`.
-   - Verified with 43 Go unit tests across controller, pool reconciler, CLI, API types, and CLI subcommands running with data race detection (`-race`).
+   - Verified with 48 Go unit tests across controller, pool reconciler, CLI, API types, and CLI subcommands running with data race detection (`-race`).
    - Executed live controller takeover (`reconciledBy: "kopf-python"` $\rightarrow$ `reconciledBy: "controller-go"`) with zero VM downtime.
 
 ### Architectural Decision Record (ADR): Prototyping in Kopf Before Go Conversion
@@ -144,7 +144,7 @@ python3 archive/prototype-kopf/vm_prep.py --image /path/to/tactical-sensor.raw -
 | **Binary Footprint** | Python runtime + pip dependencies (~150MB) | Single static binary (`bin/uds-vm-operator`, ~55MB) |
 | **Memory Footprint** | ~75 MiB RSS | ~28 MiB RSS |
 | **Startup / Reconcile Latency** | ~1.5s cold start | < 20ms startup |
-| **Unit Test Execution** | `pytest`: 10 tests in ~0.74s (archived) | `go test`: 43 tests in **~1.1s** (`-race`) |
+| **Unit Test Execution** | `pytest`: 10 tests in ~0.74s (archived) | `go test`: 48 tests in **~1.1s** (`-race`) |
 | **Concurrency / Worker Model** | Asyncio threadpool + periodic timer | Goroutine event loop with client cache & informer |
 | **CRD Status Field** | `reconciledBy: "kopf-python"` | `reconciledBy: "controller-go"` |
 
@@ -300,7 +300,7 @@ A production-ready declarative dashboard is provided in [`dashboards/uds-vm-over
 # Compile both the controller and CLI with embedded git commit & version metadata:
 make build
 
-# Run full project unit test suite (43 tests across controller, pool reconciler, CLI, API types) with data-race detection:
+# Run full project unit test suite (48 tests across controller, pool reconciler, CLI, API types) with data-race detection:
 make test
 
 # Run live Defense Unicorns Lula OSCAL compliance validation:

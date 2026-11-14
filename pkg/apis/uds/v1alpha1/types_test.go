@@ -140,3 +140,74 @@ func TestUDSVirtualMachineList_DeepCopy(t *testing.T) {
 		t.Errorf("expected nil for nilList.DeepCopy()")
 	}
 }
+
+func TestUDSVirtualMachinePool_DeepCopy(t *testing.T) {
+	rep := int32(2)
+	surge := int32(1)
+	unavail := int32(0)
+	orig := &UDSVirtualMachinePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "pool-1", Namespace: "default"},
+		Spec: UDSVirtualMachinePoolSpec{
+			Replicas: &rep,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			Strategy: RollingUpdateStrategySpec{
+				Type: "RollingUpdate",
+				RollingUpdate: &RollingUpdateConfig{
+					MaxSurge:       &surge,
+					MaxUnavailable: &unavail,
+				},
+			},
+			Template: UDSVirtualMachineTemplateSpec{
+				Metadata: metav1.ObjectMeta{Labels: map[string]string{"app": "web"}},
+				Spec: UDSVirtualMachineSpec{
+					CPUs:   2,
+					Memory: "2Gi",
+					Disk:   DiskSpec{SourceType: "dataSource", DataSourceName: "golden"},
+				},
+			},
+		},
+		Status: UDSVirtualMachinePoolStatus{
+			Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionTrue}},
+		},
+	}
+
+	copied := orig.DeepCopy()
+	if copied == nil || copied.DeepCopyObject() == nil {
+		t.Fatal("expected non-nil DeepCopy and DeepCopyObject")
+	}
+	*copied.Spec.Replicas = 5
+	*copied.Spec.Strategy.RollingUpdate.MaxSurge = 3
+	*copied.Spec.Strategy.RollingUpdate.MaxUnavailable = 2
+	copied.Spec.Selector.MatchLabels["app"] = "db"
+	copied.Status.Conditions[0].Status = metav1.ConditionFalse
+
+	if *orig.Spec.Replicas != 2 || *orig.Spec.Strategy.RollingUpdate.MaxSurge != 1 || *orig.Spec.Strategy.RollingUpdate.MaxUnavailable != 0 {
+		t.Errorf("pool DeepCopy mutated original pointer fields")
+	}
+	if orig.Spec.Selector.MatchLabels["app"] != "web" || orig.Status.Conditions[0].Status != metav1.ConditionTrue {
+		t.Errorf("pool DeepCopy mutated original selector or conditions")
+	}
+
+	var nilPool *UDSVirtualMachinePool
+	if nilPool.DeepCopy() != nil || nilPool.DeepCopyObject() != nil {
+		t.Errorf("expected nil for nil pool DeepCopy")
+	}
+}
+
+func TestUDSVirtualMachinePoolList_DeepCopy(t *testing.T) {
+	orig := &UDSVirtualMachinePoolList{
+		Items: []UDSVirtualMachinePool{{ObjectMeta: metav1.ObjectMeta{Name: "p1"}}},
+	}
+	copied := orig.DeepCopy()
+	if copied == nil || copied.DeepCopyObject() == nil {
+		t.Fatal("expected non-nil pool list DeepCopy")
+	}
+	copied.Items[0].Name = "mutated"
+	if orig.Items[0].Name == "mutated" {
+		t.Errorf("pool list DeepCopy mutated original")
+	}
+	var nilList *UDSVirtualMachinePoolList
+	if nilList.DeepCopy() != nil || nilList.DeepCopyObject() != nil {
+		t.Errorf("expected nil for nil pool list DeepCopy")
+	}
+}

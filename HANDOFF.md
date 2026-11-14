@@ -79,5 +79,5 @@ We are deliberately executing a **two-stage operator engineering workflow**:
 
 ## 5. Production Readiness & Roadmap Summary
 
-All 5 roadmap milestones ([v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ **v0.5.0**) are **100% complete, tested (43/43 Go unit tests with `-race`), and live-validated** against the K3s / KubeVirt cluster using Defense Unicorns' toolchain (`zarf`, `lula`, `client-go`).
+All 5 roadmap milestones ([v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ **v0.5.0**) are **100% complete, tested (48/48 Go unit tests with `-race`), and live-validated** against the K3s / KubeVirt cluster using Defense Unicorns' toolchain (`zarf`, `lula`, `client-go`).
 
