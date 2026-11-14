@@ -80,9 +80,9 @@ When `spec.osType: windows` is set:
 1. **Automated `virtio-win` Injection:** The operator automatically attaches the standard `virtio-win` containerDisk as a secondary CD-ROM (`sata` bus), making all Signed Windows VirtIO drivers (`viostor`, `NetKVM`, `vioscsi`, `balloon`) immediately available during boot and installation:
    ```yaml
    volumes:
-     - name: virtio-win
+     - name: virtio-win-drivers
        containerDisk:
-         image: quay.io/kubevirt/virtio-win-container-disk:latest
+         image: quay.io/kubevirt/virtio-container-disk:20261111_6cefb75928
    ```
 2. **Transitional SATA Bus Support:** If importing an existing legacy Windows disk that has not had VirtIO drivers pre-installed via DISM/Sysprep, `uds-vm-operator` allows:
    ```yaml

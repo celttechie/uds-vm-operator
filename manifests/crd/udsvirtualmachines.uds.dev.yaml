@@ -60,6 +60,7 @@ spec:
                 memory:
                   type: string
                   default: "2Gi"
+                  pattern: "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$"
                 runStrategy:
                   type: string
                   default: "Halted"
@@ -135,6 +136,7 @@ spec:
                         type: string
                       size:
                         type: string
+                        pattern: "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$"
                       bus:
                         type: string
                         enum: ["virtio", "sata", "scsi"]

@@ -1,7 +1,7 @@
 # Architecture Proposal: Golden Images, Rolling Fleet Updates & Storage Persistence
 
 **Author:** Brian Jarrett  
-**Status:** Proposed  
+**Status:** Implemented (v0.5.0 / v0.5.1)  
 **Target Release:** v0.5.0  
 **Repository:** [uds-vm-operator](file:///home/bjarrett/Projects/uds-vm-operator)
 
@@ -95,12 +95,13 @@ type DataDiskSpec struct {
 }
 
 type DiskSpec struct {
-    SourceType       string `json:"sourceType"`                 // "upload", "http", "dataSource"
-    DataSourceName   string `json:"dataSourceName,omitempty"`   // Name of CDI DataSource to clone
-    Format           string `json:"format,omitempty"`
-    VirtualSizeBytes int64  `json:"virtualSizeBytes"`
-    Checksum         string `json:"checksum"`
-    StorageClassName string `json:"storageClassName,omitempty"`
+    SourceType          string `json:"sourceType"`                 // "upload", "http", "dataSource"
+    DataSourceName      string `json:"dataSourceName,omitempty"`   // Name of CDI DataSource to clone
+    DataSourceNamespace string `json:"dataSourceNamespace,omitempty"`
+    Format              string `json:"format,omitempty"`
+    VirtualSizeBytes    int64  `json:"virtualSizeBytes,omitempty"`
+    Checksum            string `json:"checksum,omitempty"`
+    StorageClassName    string `json:"storageClassName,omitempty"`
 }
 
 type UDSVirtualMachineSpec struct {
@@ -248,4 +249,4 @@ A new VM replica is only considered `Ready` to accept production traffic when:
 | **Golden Images** | `uds-vmctl` / CDI | Real Ubuntu 22.04 and Windows Server 2022 golden DataSources deployed. |
 | **Stateless Test** | Test Suite | 3-node pool rolls with 0% dropped HTTP traffic. |
 | **Stateful Test** | Test Suite | Secondary PVC survives OS swap with byte-for-byte data integrity verified. |
-| **Observability** | Prometheus / Grafana | Metrics expose pool update progress (`uds_vm_pool_replicas_updated`). |
+| **Observability** | Prometheus / Grafana | Metrics expose pool update progress (`uds_vm_pool_replicas`). |

@@ -1,6 +1,6 @@
 .PHONY: all build build-operator build-cli build-image test clean zarf-package lula-validate
 
-VERSION ?= v0.5.0
+VERSION ?= v0.5.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 

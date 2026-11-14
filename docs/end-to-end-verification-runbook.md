@@ -69,8 +69,8 @@ ssh -F /home/bjarrett/Projects/kubevirt-dev-platform/.ssh/config kubevirt-sandbo
 Before testing, remove any existing virtual machines, data volumes, and operator deployments so you are starting from a completely clean state:
 
 ```bash
-# 1. Delete all existing UDSVirtualMachine instances
-kubectl delete udsvirtualmachine --all -A --timeout=30s --ignore-not-found
+# 1. Delete all existing UDSVirtualMachinePool and UDSVirtualMachine instances
+kubectl delete udsvirtualmachinepool,udsvirtualmachine --all -A --timeout=30s --ignore-not-found
 
 # 2. Delete existing VirtualMachines and DataVolumes in default namespace
 kubectl delete vm,vmi,dv,pvc -n default --all --timeout=60s --ignore-not-found
@@ -79,7 +79,7 @@ kubectl delete vm,vmi,dv,pvc -n default --all --timeout=60s --ignore-not-found
 kubectl delete deployment -n uds-system uds-vm-operator --ignore-not-found
 
 # 4. Confirm clean state
-kubectl get udsvm,vm,vmi,dv,pvc -n default
+kubectl get udsvmpool,udsvm,vm,vmi,dv,pvc -n default
 ```
 
 ---
@@ -100,7 +100,7 @@ Verify unit tests pass with race detection:
 ```bash
 make test
 ```
-*Expected: 15/15 Go unit tests passed.*
+*Expected: 49/49 Go unit tests passed.*
 
 ---
 
@@ -284,16 +284,16 @@ Deploy the entire operator stack and sample virtual machine via Defense Unicorns
 ```bash
 make zarf-package
 ```
-*Creates: `zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst`.*
+*Creates: `zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst`.*
 
 ### 2. Deploy the Package to the Live Cluster
 ```bash
-zarf package deploy zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst --confirm
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst --confirm
 ```
 
 ### What Happens During Deployment:
 1. Zarf verifies the cryptographic checksum of the included golden image fixture.
-2. Applies CRDs (`udsvirtualmachines.uds.dev`).
+2. Applies CRDs (`udsvirtualmachines.uds.dev`, `udsvirtualmachinepools.uds.dev`).
 3. Deploys the operator in `uds-system` with RBAC.
 4. Applies `manifests/examples/tactical-sensor-vm.yaml`.
 5. Uploads the golden image fixture to `tactical-sensor-vm-dv`.
@@ -311,8 +311,8 @@ zarf package deploy zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst --confirm
 
 **Expected Output:**
 ```text
-NAMESPACE  NAME                 PHASE  OS     PVC-SIZE  CHECKSUM-VERIFIED  ZERO-TRUST  RECONCILER     AGE
-default    tactical-sensor-vm   Ready  linux  11Mi      true               true        controller-go  2m
+NAMESPACE  NAME                 PHASE  SOURCE  OS     PVC-SIZE  CHECKSUM-VERIFIED  ZERO-TRUST  RECONCILER     AGE
+default    tactical-sensor-vm   Ready  upload  linux  11Mi      true               true        controller-go  2m
 ```
 
 ### 2. Inspect Running VM Instance via kubectl
@@ -406,7 +406,33 @@ uds_vm_reconcile_total{status="success"} 4
 
 ---
 
-## 11. Quick Reference: Command Cheat Sheet
+## 11. Step 9: Golden Image Fast Cloning, Retained `dataDisks` & `UDSVirtualMachinePool` Fleet Updates
+
+### 1. Fast-Clone VM with Retained Persistent Data Disk
+```bash
+kubectl apply -f manifests/examples/golden-image-datasource.yaml
+kubectl apply -f manifests/examples/fast-clone-persistent-vm.yaml
+kubectl wait --for=condition=Ready udsvm/tactical-fast-clone-vm -n default --timeout=120s
+
+# Verify deleting the VM preserves the Retain dataDisk PVC
+kubectl delete udsvm tactical-fast-clone-vm -n default
+kubectl get pvc tactical-fast-clone-vm-data-mission-data -n default
+```
+
+### 2. Zero-Downtime Rolling Fleet Update (`UDSVirtualMachinePool`)
+```bash
+kubectl apply -f manifests/examples/tactical-vm-pool.yaml
+kubectl wait --for=condition=Ready udsvmpool/tactical-vm-pool -n default --timeout=180s
+
+# Trigger a rolling update (maxSurge: 1, maxUnavailable: 0)
+kubectl patch udsvmpool tactical-vm-pool -n default --type=merge -p='{"spec":{"template":{"spec":{"cpus":3}}}}'
+kubectl wait --for=condition=Ready udsvmpool/tactical-vm-pool -n default --timeout=180s
+kubectl get udsvmpool,udsvm -n default
+```
+
+---
+
+## 12. Quick Reference: Command Cheat Sheet
 
 | Purpose | Command |
 | :--- | :--- |
@@ -415,9 +441,9 @@ uds_vm_reconcile_total{status="success"} 4
 | **Run Unit Tests** | `make test` |
 | **Inspect Golden Disk** | `./bin/uds-vmctl prep images/tactical-linux-golden.raw --zarf --name tactical-sensor-vm` |
 | **Build Zarf Package** | `make zarf-package` |
-| **Deploy Zarf Package** | `zarf package deploy zarf-package-uds-vm-operator-amd64-0.4.0.tar.zst --confirm` |
+| **Deploy Zarf Package** | `zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst --confirm` |
 | **Fleet Inventory** | `./bin/uds-vmctl inventory` |
 | **Power Control** | `./bin/uds-vmctl power [start\|stop\|restart] <vm-name>` |
 | **Validate cATO (Lula)** | `make lula-validate` |
 | **Scrape Telemetry** | `curl -s http://localhost:8080/metrics \| grep uds_vm_` |
-| **Clean Slate Reset** | `kubectl delete udsvm --all -A && kubectl delete vm,dv,pvc --all -n default` |
+| **Clean Slate Reset** | `kubectl delete udsvmpool,udsvm --all -A && kubectl delete vm,dv,pvc --all -n default` |

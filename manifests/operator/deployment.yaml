@@ -73,7 +73,7 @@ spec:
       serviceAccountName: uds-vm-operator
       containers:
         - name: manager
-          image: ghcr.io/celttechie/uds-vm-operator:v0.5.0
+          image: ghcr.io/celttechie/uds-vm-operator:v0.5.1
           command:
             - /manager
           resources:
