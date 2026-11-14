@@ -78,7 +78,7 @@ jobs:
           python3 -c "import yaml; list(yaml.safe_load_all(open('zarf.yaml')))"
 
   trivy-vulnerability-scan:
-    name: Trivy Dependency & Container Image Scan (NIST RA-5, SI-2)
+    name: Trivy Dependency, Secret, Image Scan & SBOM (NIST RA-5, SI-2, CM-8)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -93,12 +93,12 @@ jobs:
       - name: Build Operator Binary & Container Image
         run: VERSION=ci-scan make build-image
 
-      - name: Run Trivy Filesystem Scan (go.mod HIGH/CRITICAL)
+      - name: Run Trivy Filesystem Scan (go.mod HIGH/CRITICAL & Secrets)
         uses: aquasecurity/trivy-action@0.29.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          scanners: 'vuln'
+          scanners: 'vuln,secret'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
 
@@ -108,3 +108,17 @@ jobs:
           image-ref: 'ghcr.io/celttechie/uds-vm-operator:ci-scan'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
+
+      - name: Generate SPDX SBOM (NIST CM-8)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: 'ghcr.io/celttechie/uds-vm-operator:ci-scan'
+          format: 'spdx-json'
+          output: 'uds-vm-operator-sbom.spdx.json'
+
+      - name: Upload SPDX SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uds-vm-operator-spdx-sbom
+          path: uds-vm-operator-sbom.spdx.json
+          retention-days: 30
