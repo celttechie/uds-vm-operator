@@ -32,10 +32,14 @@ if (Test-Path $UpdatesDir) {
     }
 }
 
-Write-Host "[3/4] Applying baseline DISA STIG / security hardening..."
-# Disable Guest account and SMBv1
-net user Guest /active:no | Out-Null
-Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction SilentlyContinue | Out-Null
+Write-Host "[3/4] Applying DISA STIG baseline hardening..."
+$stigScript = Join-Path $PSScriptRoot "apply-disa-stig.ps1"
+if (Test-Path $stigScript) {
+    & $stigScript
+} else {
+    net user Guest /active:no | Out-Null
+    Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction SilentlyContinue | Out-Null
+}
 
 Write-Host "[4/4] Cleaning WinSxS component store and temp files to minimize QCOW2 size..."
 Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
