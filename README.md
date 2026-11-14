@@ -5,7 +5,8 @@
 [![Zarf Package](https://img.shields.io/badge/zarf-v0.85%2B%20air--gap-blue.svg)](zarf.yaml)
 [![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7%20%7C%20IA--5-blue.svg)](compliance/oscal-component.yaml)
 [![Upstream CDI PR](https://img.shields.io/badge/CDI%20PR-%234340%20Under%20Review-orange.svg)](https://github.com/kubevirt/containerized-data-importer/pull/4340)
-[![Roadmap](https://img.shields.io/badge/Roadmap-v0.5.0%20Completed-purple.svg)](ROADMAP.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-v0.6.0--sec%20Completed-purple.svg)](ROADMAP.md)
+[![Trivy Scan](https://img.shields.io/badge/Trivy-0%20HIGH%2FCRITICAL-brightgreen.svg)](docs/security-audit-and-remediation.md)
 
 An air-gap ready reference implementation and contribution-ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
 
@@ -70,6 +71,8 @@ flowchart TD
 | [ADR 0001](docs/adr/0001-two-stage-kopf-to-go-operator.md) | Two-Stage Engineering Workflow (Python `kopf` Prototype $\rightarrow$ Go `controller-runtime`) | Accepted |
 | [ADR 0002](docs/adr/0002-cdi-datasource-and-retained-datadisks.md) | CDI `DataSource` Fast Cloning & Decoupled Retained `dataDisks[]` | Accepted |
 | [ADR 0003](docs/adr/0003-uds-vm-pool-rolling-updates.md) | `UDSVirtualMachinePool` for Zero-Downtime Rolling Fleet Updates | Accepted |
+| [ADR 0004](docs/adr/0004-windows-two-stage-golden-image-factory.md) | Windows Two-Stage Golden Image Factory (`iso` $\rightarrow$ `v1` $\rightarrow$ `v2`) | Accepted |
+| [ADR 0005](docs/adr/0005-windows-sysprep-provisioning-modes.md) | Windows Sysprep Provisioning Modes (`iso \| clone \| auto`) & NetBIOS Naming | Accepted |
 
 ---
 

@@ -112,4 +112,16 @@ Detailed architectural specifications, CRD schemas, and decisions are maintained
 - **Release `v0.5.1` Hardening & Observability:**
   - Added `uds_vm_pool_replicas` Prometheus metrics, `ReconcileTotal{status="error"}` tracking, conflict-safe `PoolReconciler` status updates, safe `resource.ParseQuantity` validation, `SOURCE` column in `uds-vmctl inventory`, and `manifests/examples/tactical-vm-pool.yaml`.
 
+---
+
+## Milestone v0.6.0 — Windows Two-Stage Golden Image Factory, STIG Automation & `v0.6.0-sec` Hardening (COMPLETED)
+
+### Delivered Capabilities:
+- **Two-Stage Windows Golden Image Factory & Sysprep Modes ([ADR 0004](docs/adr/0004-windows-two-stage-golden-image-factory.md), [ADR 0005](docs/adr/0005-windows-sysprep-provisioning-modes.md)):**
+  - Added `windowsProfile.provisioningMode` (`iso | clone | auto`) and `SanitizePoolNetBIOSName` for deterministic 15-character Windows NetBIOS hostnames across pooled replicas.
+  - Added Packer/DISM `.msu` slipstreaming and in-cluster clone-and-patch tooling (`images/windows/`), DISA STIG baseline automation (`images/windows/scripts/apply-disa-stig.ps1`), and [Windows Lifecycle & STIG Runbook](docs/windows-lifecycle-and-stig-runbook.md).
+  - Validated live Windows Server 2022 `v1` $\rightarrow$ `v2` golden image build and zero-downtime `UDSVirtualMachinePool` rolling update (`maxSurge: 1`, `maxUnavailable: 0`) on `kubevirt-sandbox`.
+- **Full-Stack Security Audit & Remediation (`v0.6.0-sec`, [Security Audit Report](docs/security-audit-and-remediation.md)):**
+  - Eliminated all 10 `HIGH` Go dependency CVEs (`golang.org/x/net`, `x/oauth2`, `x/text`) and 2 `HIGH` `musl` container CVEs by migrating `Dockerfile` to `gcr.io/distroless/static:nonroot` (`USER 65532:65532`).
+  - Hardened `manifests/operator/deployment.yaml` with pod/container `securityContext` (`runAsNonRoot: true`, `seccompProfile: RuntimeDefault`), verified `0` `HIGH`/`CRITICAL` CVEs via Trivy, verified live Windows STIG registry/account policies via `qemu-ga`, and verified 4/4 `satisfied` NIST 800-53 controls via `make lula-validate`.
 
