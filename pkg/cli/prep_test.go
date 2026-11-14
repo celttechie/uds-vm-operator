@@ -162,6 +162,12 @@ func TestGenerateUDSVirtualMachineYAML(t *testing.T) {
 	if !strings.Contains(yamlGolden, "osType: windows") {
 		t.Errorf("expected osType windows, got:\n%s", yamlGolden)
 	}
+	if !strings.Contains(yamlGolden, "provisioningMode: clone") {
+		t.Errorf("expected provisioningMode clone for Windows golden image, got:\n%s", yamlGolden)
+	}
+	if !strings.Contains(yamlGolden, "injectVirtioWinISO: false") {
+		t.Errorf("expected injectVirtioWinISO false for Windows golden image, got:\n%s", yamlGolden)
+	}
 }
 
 func TestGenerateCDIDataSourceYAML(t *testing.T) {

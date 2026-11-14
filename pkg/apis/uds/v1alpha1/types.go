@@ -85,6 +85,7 @@ type WindowsProfileSpec struct {
 	PersistentTPM              *bool  `json:"persistentTPM,omitempty"`
 	SysprepSecretRef           string `json:"sysprepSecretRef,omitempty"`
 	AdminPasswordSecretRef     string `json:"adminPasswordSecretRef,omitempty"`
+	ProvisioningMode           string `json:"provisioningMode,omitempty"`
 }
 
 // DeepCopyInto copies all properties of WindowsProfileSpec.

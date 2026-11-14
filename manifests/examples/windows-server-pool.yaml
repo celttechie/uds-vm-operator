@@ -1,0 +1,48 @@
+# Stage 2: Production Windows Server 2022 Fleet (UDSVirtualMachinePool)
+# Clones from the generalized/slipstreamed Golden Image DataSource (`provisioningMode: clone`,
+# `injectVirtioWinISO: false`) for ~1-3 minute boot and zero-downtime rolling updates.
+# To roll out Patch Tuesday / slipstreamed v2, bump `dataSourceName` -> `windows-server-2022-v2`.
+apiVersion: uds.dev/v1alpha1
+kind: UDSVirtualMachinePool
+metadata:
+  name: win2022-app-pool
+  namespace: default
+  labels:
+    app.kubernetes.io/name: win2022-app-pool
+    uds.dev/security-tier: mission-critical
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        uds.dev/workload: windows-app
+    spec:
+      osType: windows
+      cpus: 4
+      memory: 8Gi
+      runStrategy: Always
+      windowsProfile:
+        diskBus: virtio
+        nicModel: virtio
+        provisioningMode: clone
+        injectVirtioWinISO: false
+        enableHyperVEnlightenments: true
+        enableSecureBootTPM: true
+      disk:
+        sourceType: dataSource
+        dataSourceName: windows-server-2022-v1
+        dataSourceNamespace: uds-golden-images
+        format: qcow2
+        virtualSizeBytes: 42949672960
+      dataDisks:
+        - name: appdata
+          size: 20Gi
+          bus: virtio
+          retentionPolicy: Retain
+      securityProfile:
+        zeroTrustNetwork: true

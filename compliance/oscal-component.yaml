@@ -120,6 +120,13 @@ component-definition:
                   resource: datavolumes
                   namespaces:
                   - default
+              - name: golden_dvs
+                resource-rule:
+                  group: cdi.kubevirt.io
+                  version: v1beta1
+                  resource: datavolumes
+                  namespaces:
+                  - uds-golden-images
             type: kubernetes
           metadata:
             name: si-7-validation
@@ -133,6 +140,13 @@ component-definition:
                   dv := input.vm_dvs[_]
                   dv.metadata.name == "tactical-sensor-vm-dv"
                   dv.status.phase == "Succeeded"
+                }
+
+                validate {
+                  dv := input.golden_dvs[_]
+                  dv.metadata.namespace == "uds-golden-images"
+                  dv.status.phase == "Succeeded"
+                  dv.spec.source.upload.checksum != ""
                 }
             type: opa
       - uuid: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f

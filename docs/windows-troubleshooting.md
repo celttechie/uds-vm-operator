@@ -198,3 +198,19 @@ spec:
   securityProfile:
     zeroTrustNetwork: true
 ```
+
+---
+
+## 4. Two-Stage Golden Image Factory, Slipstreaming & Fleet Rolling Updates
+
+For production fleets (`UDSVirtualMachinePool`), running full `windowsPE` ISO setup on every replica takes 15–30+ minutes. `uds-vm-operator` supports a deterministic **two-stage Golden Image workflow** (see [ADR 0004](adr/0004-windows-two-stage-golden-image-factory.md) and [ADR 0005](adr/0005-windows-sysprep-provisioning-modes.md)):
+
+1. **Stage 1 — Initial Baseline via In-Cluster ISO Install (`provisioningMode: iso`):**
+   - See `manifests/examples/windows-golden-builder.yaml`: uploads the vendor-signed ISO with **SI-7** SHA-256 verification and installs onto a persistent `dataDisks` PVC (`name: installdisk`, `retentionPolicy: Retain`).
+   - Run `images/windows/scripts/prepare-golden-image.ps1 -RunSysprep` to install `qemu-ga`, apply STIG baselines, clean WinSxS, and execute `sysprep /generalize /oobe /shutdown`.
+   - Promote the PVC to a CDI `DataSource` (`windows-server-2022-v1`) in `uds-golden-images`.
+2. **Stage 2 — Fast Slipstreamed / Patched Images (`provisioningMode: clone`):**
+   - Build patched `v2` images offline using Packer + compressed QCOW2 (`images/windows/windows-server-2022.pkr.hcl` and `images/windows/scripts/slipstream-wim.ps1`) or by cloning `v1` in-cluster, applying `.msu` updates, and re-running `sysprep /generalize /oobe /shutdown`.
+   - Generate manifests via `uds-vmctl prep --os windows --golden-image windows-server-2022-golden.qcow2`, which explicitly sets `provisioningMode: clone` and `injectVirtioWinISO: false` (since VirtIO drivers and `qemu-ga` are already slipstreamed).
+   - Cloned `UDSVirtualMachinePool` replicas (`manifests/examples/windows-server-pool.yaml`) boot through `specialize` $\rightarrow$ `oobeSystem` in **~1–3 minutes** with unique SIDs, collision-free 15-char NetBIOS hostnames, and per-VM 24-char `IA-5` passwords.
+
