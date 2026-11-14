@@ -15,8 +15,7 @@ gantt
     v0.2.0 Windows VM Automation & STIG      :done, 2026-11-11, 2026-11-11
     v0.3.0 Go CLI (uds-vmctl) & Zarf Pkg     :done, 2026-11-11, 2026-11-11
     v0.4.0 Lula cATO & Prometheus Metrics    :done, 2026-11-11, 2026-11-11
-    section Planned
-    v0.5.0 Golden Images, Fleet Updates & Persistence :active, 2026-11-12, 2026-11-30
+    v0.5.0 Golden Images, Fleet Updates & Persistence :done, 2026-11-12, 2026-11-13
 ```
 
 ---
@@ -91,28 +90,24 @@ Bridge the gap between Kubernetes orchestration and federal authorization by imp
 
 ---
 
-## [Milestone v0.5.0](docs/plan-golden-images-rolling-updates-persistence.md) — Golden Image Caching, Fleet Updates & Storage Persistence (IN PROGRESS)
+## [Milestone v0.5.0](docs/plan-golden-images-rolling-updates-persistence.md) — Golden Image Caching, Fleet Updates & Storage Persistence (COMPLETED)
 
 ### Objective:
 Transition the operator from single-instance validation to automated enterprise fleet management, enabling zero-downtime rolling updates, centralized golden image caching via CDI `DataSource` objects, and stateful storage persistence.
 
-Detailed architectural specifications, CRD schemas, and testing runbooks are maintained in the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md).
+Detailed architectural specifications, CRD schemas, and decisions are maintained in the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md) and [Architecture Decision Records](docs/adr/).
 
-### Delivered Capabilities (Phases 5A & 5B):
-- **Centralized Image Caching & Fast Copy-on-Write (CoW) Cloning (PR #10):**
+### Delivered Capabilities (Phases 5A, 5B & 5C):
+- **Centralized Image Caching & Fast Copy-on-Write (CoW) Cloning (Phase 5A, PR #10):**
   - Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) to `UDSVirtualMachine` and `BuildDataVolume` (`spec.sourceRef`).
   - Extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns` to emit central CDI `DataVolume`/`DataSource` manifests alongside consumer VM manifests.
   - Verified live cross-namespace CoW cloning (`uds-golden-images` $\rightarrow$ `default`) on `kubevirt-sandbox`.
-- **Dual Storage Topology (`spec.dataDisks[]`, PR #10):**
+- **Dual Storage Topology (`spec.dataDisks[]`, Phase 5A, PR #10):**
   - Added decoupled secondary `dataDisks` supporting `virtio`/`sata` buses and `retentionPolicy: Retain` vs `Delete` (omitting `OwnerReferences` on retained PVCs so data survives VM deletion).
-- **Zarf v0.5.0 Air-Gap Golden Image Bundle (PR #11):**
-  - Updated `zarf.yaml` to `0.5.0` with `golden-image-datasource` and `fast-clone-vm` components and verified live `zarf package deploy` on `kubevirt-sandbox`.
-
-### Remaining Planned Capabilities (Phase 5C):
-- **Zero-Downtime Rolling Fleet Updates (`UDSVirtualMachinePool`):**
-  - Orchestrate coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`).
-  - Enforce guest readiness verification (QEMU Guest Agent health, application port probes, and answer-script completion) before traffic cutover.
-- **Lula OSCAL Updates for DataDisks & DataSources:**
-  - Extend `compliance/oscal-component.yaml` to validate `DataSource` and retained `dataDisks` compliance.
+- **Zarf v0.5.0 Air-Gap Golden Image Bundle (Phase 5B, PR #11):**
+  - Updated `zarf.yaml` to `0.5.0` with `golden-image-datasource` (`noWait: true`) and `fast-clone-vm` components and verified live `zarf package deploy` on `kubevirt-sandbox`.
+- **Zero-Downtime Rolling Fleet Updates (`UDSVirtualMachinePool`, Phase 5C, PR #12):**
+  - Added `UDSVirtualMachinePool` (`udsvmpool`) CRD and `PoolReconciler` orchestrating coordinated rolling updates (`maxSurge: 1`, `maxUnavailable: 0`) with deterministic template revision hashing and readiness-gated draining.
+  - Formalized Architecture Decision Records in [`docs/adr/`](docs/adr/) (`0001`, `0002`, `0003`).
 
 

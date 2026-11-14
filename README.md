@@ -1,15 +1,15 @@
 # UDS Virtual Machine Operator (`uds-vm-operator`)
 
-[![Go Unit Tests](https://img.shields.io/badge/go%20tests-39%2F39%20passed%20-brightgreen.svg)](pkg/controller/reconciler_test.go)
+[![Go Unit Tests](https://img.shields.io/badge/go%20tests-43%2F43%20passed-brightgreen.svg)](pkg/controller/reconciler_test.go)
 [![Lula OSCAL](https://img.shields.io/badge/Lula%20OSCAL-100%25%20Satisfied%20(cATO)-brightgreen.svg)](compliance/oscal-component.yaml)
 [![Zarf Package](https://img.shields.io/badge/zarf-v0.85%2B%20air--gap-blue.svg)](zarf.yaml)
 [![Compliance](https://img.shields.io/badge/NIST%20800--53-SC--7%20%7C%20AC--3%20%7C%20SI--7%20%7C%20IA--5-blue.svg)](compliance/oscal-component.yaml)
 [![Upstream CDI PR](https://img.shields.io/badge/CDI%20PR-%234340%20Under%20Review-orange.svg)](https://github.com/kubevirt/containerized-data-importer/pull/4340)
-[![Roadmap](https://img.shields.io/badge/Roadmap-v0.5.0%20In%20Progress-purple.svg)](ROADMAP.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-v0.5.0%20Completed-purple.svg)](ROADMAP.md)
 
 An air-gap ready reference implementation and contribution-ready Kubernetes operator declaratively managing secure, NIST 800-53 compliant virtual machines on **KubeVirt** and **Containerized Data Importer (CDI)** within [Defense Unicorns](https://defenseunicorns.com) Unicorn Delivery Service (UDS) environments.
 
-> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability & Continuous ATO)](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ [v0.5.0 Architecture Proposal (Golden Images, Rolling Updates & Persistence)](docs/plan-golden-images-rolling-updates-persistence.md)).
+> 📍 **Product Roadmap:** See [ROADMAP.md](ROADMAP.md) for phased capability milestones ([v0.1.0 (Core Operator)](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0 (Windows Automation)](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0 (Go CLI & Zarf)](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0 (Observability & Continuous ATO)](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ [v0.5.0 (Golden Images, Rolling Updates & Persistence)](docs/plan-golden-images-rolling-updates-persistence.md)).
 
 ---
 
@@ -40,7 +40,7 @@ flowchart TD
 
     subgraph Stage2["Phase 2: Production Conversion (Go / controller-runtime)"]
         E[pkg/apis/uds/v1alpha1] --> F[pkg/controller/reconciler.go]
-        F -->|1:1 Parity Unit Tests| G["go test: 33/33 Passing (-race, 74% cov)"]
+        F -->|1:1 Parity Unit Tests| G["go test: 43/43 Passing (-race)"]
         G --> H[cmd/uds-vm-operator/main.go & cmd/uds-vmctl]
         H --> I[bin/uds-vm-operator & bin/uds-vmctl]
     end
@@ -60,7 +60,7 @@ flowchart TD
    - Preserved in `archive/prototype-kopf/` with 10 passing `pytest` unit tests for historical reference.
 2. **Stage 2 — Production Go Controller & CLI (`pkg/` and `cmd/`):**
    - Transferred 1:1 into Go using `controller-runtime` and `client-go`.
-   - Verified with 33 Go unit tests across controller (87.7% cov), CLI (73.7% cov), API types (92.2% cov), and CLI subcommands running with data race detection (`-race`).
+   - Verified with 43 Go unit tests across controller, pool reconciler, CLI, API types, and CLI subcommands running with data race detection (`-race`).
    - Executed live controller takeover (`reconciledBy: "kopf-python"` $\rightarrow$ `reconciledBy: "controller-go"`) with zero VM downtime.
 
 ### Architectural Decision Record (ADR): Prototyping in Kopf Before Go Conversion
@@ -144,7 +144,7 @@ python3 archive/prototype-kopf/vm_prep.py --image /path/to/tactical-sensor.raw -
 | **Binary Footprint** | Python runtime + pip dependencies (~150MB) | Single static binary (`bin/uds-vm-operator`, ~55MB) |
 | **Memory Footprint** | ~75 MiB RSS | ~28 MiB RSS |
 | **Startup / Reconcile Latency** | ~1.5s cold start | < 20ms startup |
-| **Unit Test Execution** | `pytest`: 10 tests in ~0.74s (archived) | `go test`: 33 tests in **~1.0s** (`-race`, 74% cov) |
+| **Unit Test Execution** | `pytest`: 10 tests in ~0.74s (archived) | `go test`: 43 tests in **~1.1s** (`-race`) |
 | **Concurrency / Worker Model** | Asyncio threadpool + periodic timer | Goroutine event loop with client cache & informer |
 | **CRD Status Field** | `reconciledBy: "kopf-python"` | `reconciledBy: "controller-go"` |
 
@@ -300,7 +300,7 @@ A production-ready declarative dashboard is provided in [`dashboards/uds-vm-over
 # Compile both the controller and CLI with embedded git commit & version metadata:
 make build
 
-# Run full project unit test suite (39 tests across controller, CLI, API types) with data-race detection:
+# Run full project unit test suite (43 tests across controller, pool reconciler, CLI, API types) with data-race detection:
 make test
 
 # Run live Defense Unicorns Lula OSCAL compliance validation:
@@ -314,11 +314,11 @@ make zarf-build
 
 ---
 
-## 13. Current Architecture Phase: Golden Images, Rolling Fleet Updates & Storage Persistence (Milestone v0.5.0)
+## 13. Enterprise Fleet Management & Golden Images (Milestone v0.5.0 — Completed)
 
 With single-instance air-gap lifecycle verification, Continuous ATO, and Prometheus telemetry validated in `v0.4.0`, **Milestone v0.5.0** transitions the operator to automated enterprise fleet management.
 
-The complete architectural proposal, CRD schemas, and verification matrix are detailed in **[`docs/plan-golden-images-rolling-updates-persistence.md`](docs/plan-golden-images-rolling-updates-persistence.md)**.
+The complete architectural proposal, CRD schemas, and verification matrix are detailed in **[`docs/plan-golden-images-rolling-updates-persistence.md`](docs/plan-golden-images-rolling-updates-persistence.md)**, and key architectural choices are recorded in **[`docs/adr/`](docs/adr/)**.
 
 ### Architectural Pillars of Milestone v0.5.0:
 
@@ -328,12 +328,12 @@ The complete architectural proposal, CRD schemas, and verification matrix are de
 2. **Dual Storage Topology (`Phase 5A` — Implemented in PR #10):**
    - **Stateless Fleets:** Disposable, immutable virtual machines where the root operating system disk is replaced or destroyed on demand.
    - **Stateful Workloads:** Decoupled secondary `spec.dataDisks[]` bound to independent PVCs (`retentionPolicy: Retain` omits `OwnerReferences` so data survives VM recreation).
-3. **Zarf v0.5.0 Air-Gap Golden Image Bundle (`Phase 5B` — PR #11):**
-   - `zarf.yaml` bundles `crds`, `operator:v0.5.0`, `golden-image-datasource`, and `fast-clone-vm` into a single air-gap `.tar.zst` distribution.
-4. **Zero-Downtime Rolling Fleet Updates (`Phase 5C` — Planned):**
-   - Introduction of `UDSVirtualMachinePool` orchestrating coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`) with guest readiness verification.
+3. **Zarf v0.5.0 Air-Gap Golden Image Bundle (`Phase 5B` — Implemented in PR #11):**
+   - `zarf.yaml` bundles `crds`, `operator:v0.5.0`, `golden-image-datasource` (`noWait: true`), and `fast-clone-vm` into a single air-gap `.tar.zst` distribution.
+4. **Zero-Downtime Rolling Fleet Updates (`Phase 5C` — Implemented in PR #12):**
+   - `UDSVirtualMachinePool` (`udsvmpool`) and `PoolReconciler` orchestrate coordinated rolling updates across VM instances (`maxSurge: 1`, `maxUnavailable: 0`) with deterministic template revision hashing and readiness-gated draining.
 
-For full architectural diagrams, implementation phases, and test scenarios, review the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md).
+For full architectural diagrams, implementation phases, and design rationale, review the [Architecture Proposal Document](docs/plan-golden-images-rolling-updates-persistence.md) and [Architecture Decision Records](docs/adr/).
 
 
 

@@ -70,14 +70,14 @@ We are deliberately executing a **two-stage operator engineering workflow**:
   - Custom Prometheus metrics (`uds_vm_compliance_verified`, `uds_vm_storage_overhead_ratio`, `uds_vm_phase_status`, `uds_vm_reconcile_total`).
   - Declarative Grafana dashboard (`dashboards/uds-vm-overview.json`) visualizing fleet telemetry and real-time cATO evidence.
   - Updated CI/CD workflow (`.github/workflows/ci.yaml`) with Lula validation and pure Go analysis.
-- **v0.5.0 (Phases 5A & 5B) — CDI DataSource Fast Cloning, Persistent `dataDisks`, & Zarf v0.5.0 Bundle (PR #10, PR #11):**
-  - Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) and `spec.dataDisks[]` (`retentionPolicy: Retain|Delete`) with live cross-namespace CoW clone and PVC retention verification on `kubevirt-sandbox`.
-  - Extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns`.
-  - Updated `zarf.yaml` and operator image to `v0.5.0` with `golden-image-datasource` and `fast-clone-vm` components; verified live `zarf package deploy`.
+- **v0.5.0 — Golden Images, Persistent `dataDisks`, Zarf v0.5.0 Bundle & `UDSVirtualMachinePool` (PR #10, PR #11, PR #12):**
+  - **Phase 5A (PR #10):** Added `sourceType: dataSource` (`dataSourceName`, `dataSourceNamespace`) and `spec.dataDisks[]` (`retentionPolicy: Retain|Delete`) with live cross-namespace CoW clone and PVC retention verification on `kubevirt-sandbox`; extended `uds-vmctl prep` with `--golden-image`, `--data-source-name`, and `--data-source-ns`.
+  - **Phase 5B (PR #11):** Updated `zarf.yaml` and operator image to `v0.5.0` with `golden-image-datasource` (`noWait: true`) and `fast-clone-vm` components; verified live `zarf package deploy`.
+  - **Phase 5C (PR #12):** Added `UDSVirtualMachinePool` (`udsvmpool`) CRD, `PoolReconciler` (`maxSurge`/`maxUnavailable` rolling fleet updates), `datavolumes/source` RBAC, and `docs/adr/0001`–`0003`; verified live 2-replica rolling update (`f1f8bc544e` $\rightarrow$ `278ee74bbc`) on `kubevirt-sandbox`.
 
 ---
 
 ## 5. Production Readiness & Roadmap Summary
 
-Milestones [v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) through [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) are **100% complete**, and **v0.5.0 Phases 5A & 5B** are **complete and live-verified** against the K3s / KubeVirt cluster using Defense Unicorns' toolchain (`zarf`, `lula`, `client-go`). Phase 5C (`UDSVirtualMachinePool` rolling fleet updates and expanded Lula OSCAL rules) is next.
+All 5 roadmap milestones ([v0.1.0](https://github.com/celttechie/uds-vm-operator/milestone/1) $\rightarrow$ [v0.2.0](https://github.com/celttechie/uds-vm-operator/milestone/2) $\rightarrow$ [v0.3.0](https://github.com/celttechie/uds-vm-operator/milestone/3) $\rightarrow$ [v0.4.0](https://github.com/celttechie/uds-vm-operator/milestone/4) $\rightarrow$ **v0.5.0**) are **100% complete, tested (43/43 Go unit tests with `-race`), and live-validated** against the K3s / KubeVirt cluster using Defense Unicorns' toolchain (`zarf`, `lula`, `client-go`).
 
