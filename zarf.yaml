@@ -14,6 +14,7 @@ components:
       - name: crds
         files:
           - manifests/crd/udsvirtualmachines.uds.dev.yaml
+          - manifests/crd/udsvirtualmachinepools.uds.dev.yaml
 
   - name: operator
     required: true
