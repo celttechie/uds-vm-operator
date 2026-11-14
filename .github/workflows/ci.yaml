@@ -76,3 +76,35 @@ jobs:
         run: |
           python3 -c "import yaml, glob; [list(yaml.safe_load_all(open(f))) for f in glob.glob('manifests/**/*.yaml', recursive=True)]"
           python3 -c "import yaml; list(yaml.safe_load_all(open('zarf.yaml')))"
+
+  trivy-vulnerability-scan:
+    name: Trivy Dependency & Container Image Scan (NIST RA-5, SI-2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build Operator Binary & Container Image
+        run: VERSION=ci-scan make build-image
+
+      - name: Run Trivy Filesystem Scan (go.mod HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+      - name: Run Trivy Container Image Scan (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: 'ghcr.io/celttechie/uds-vm-operator:ci-scan'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
