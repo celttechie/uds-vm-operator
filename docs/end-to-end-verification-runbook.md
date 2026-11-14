@@ -278,11 +278,11 @@ Deploy the entire operator stack and sample virtual machine via Defense Unicorns
 ```bash
 make zarf-package
 ```
-*Creates: `zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst`.*
+*Creates: `zarf-package-uds-vm-operator-amd64-0.6.0-sec.tar.zst`.*
 
 ### 2. Deploy the Package to the Live Cluster
 ```bash
-zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst --confirm
+zarf package deploy zarf-package-uds-vm-operator-amd64-0.6.0-sec.tar.zst --confirm
 ```
 
 ### What Happens During Deployment:
@@ -435,7 +435,7 @@ kubectl get udsvmpool,udsvm -n default
 | **Run Unit Tests** | `make test` |
 | **Inspect Golden Disk** | `./bin/uds-vmctl prep images/tactical-linux-golden.raw --zarf --name tactical-sensor-vm` |
 | **Build Zarf Package** | `make zarf-package` |
-| **Deploy Zarf Package** | `zarf package deploy zarf-package-uds-vm-operator-amd64-0.5.1.tar.zst --confirm` |
+| **Deploy Zarf Package** | `zarf package deploy zarf-package-uds-vm-operator-amd64-0.6.0-sec.tar.zst --confirm` |
 | **Fleet Inventory** | `./bin/uds-vmctl inventory` |
 | **Power Control** | `./bin/uds-vmctl power [start\|stop\|restart] <vm-name>` |
 | **Validate cATO (Lula)** | `make lula-validate` |
