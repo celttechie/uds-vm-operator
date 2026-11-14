@@ -139,6 +139,24 @@ func GenerateUDSVirtualMachineYAMLWithDataSource(info *DiskInfo, vmName, osType 
 		}
 	}
 
+	windowsProfileBlock := ""
+	if osType == "windows" {
+		provMode := "clone"
+		injectISO := "false"
+		if info.Format == "iso" && !isGoldenImage && dsName == "" {
+			provMode = "iso"
+			injectISO = "true"
+		}
+		windowsProfileBlock = fmt.Sprintf(`  windowsProfile:
+    diskBus: virtio
+    nicModel: virtio
+    provisioningMode: %s
+    injectVirtioWinISO: %s
+    enableHyperVEnlightenments: true
+    enableSecureBootTPM: true
+`, provMode, injectISO)
+	}
+
 	return fmt.Sprintf(`apiVersion: uds.dev/v1alpha1
 kind: UDSVirtualMachine
 metadata:
@@ -155,7 +173,7 @@ spec:
   cpus: 2
   memory: 4Gi
   runStrategy: Always
-  disk:
+%s  disk:
     sourceType: %s
 %s    format: %s
     virtualSizeBytes: %d
@@ -164,7 +182,7 @@ spec:
     zeroTrustNetwork: true
     disallowSSHPassword: true
     fipsMode: true
-`, vmName, vmName, osType, sourceType, dataSourceLines, info.Format, info.VirtualSizeBytes, info.ChecksumSHA256)
+`, vmName, vmName, osType, windowsProfileBlock, sourceType, dataSourceLines, info.Format, info.VirtualSizeBytes, info.ChecksumSHA256)
 }
 
 // GenerateCDIDataSourceYAML outputs the central CDI DataVolume and DataSource manifests for the golden image.

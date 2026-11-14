@@ -98,6 +98,10 @@ spec:
                       type: string
                     adminPasswordSecretRef:
                       type: string
+                    provisioningMode:
+                      type: string
+                      enum: ["iso", "clone", "auto"]
+                      default: "auto"
                 disk:
                   type: object
                   required:

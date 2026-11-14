@@ -233,12 +233,114 @@ func SanitizeNetBIOSName(name string) string {
 	return res
 }
 
-// BuildWindowsAutounattendXML generates a zero-touch Autounattend.xml answer file for Windows Setup (NIST 800-53 AC-3, IA-5).
+// SanitizePoolNetBIOSName preserves the trailing revision/index suffix on UDSVirtualMachinePool
+// replicas so Windows ComputerNames remain unique within 15-character NetBIOS limits.
+func SanitizePoolNetBIOSName(name string) string {
+	sanitized := strings.ToUpper(name)
+	var b strings.Builder
+	for _, r := range sanitized {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	res := b.String()
+	if len(res) > 15 {
+		prefix := strings.TrimRight(res[:9], "-")
+		suffix := strings.TrimLeft(res[len(res)-5:], "-")
+		switch {
+		case prefix == "":
+			res = suffix
+		case suffix == "":
+			res = prefix
+		default:
+			res = prefix + "-" + suffix
+		}
+		if len(res) > 15 {
+			res = res[:15]
+		}
+	}
+	res = strings.Trim(res, "-")
+	if res == "" {
+		res = "WIN-TACTICAL"
+	}
+	return res
+}
+
+// ResolveWindowsProvisioningMode determines whether Windows Sysprep should emit an ISO install
+// answer file ("iso") or a generalized Golden Image clone answer file ("clone").
+func ResolveWindowsProvisioningMode(udsvm *udsv1alpha1.UDSVirtualMachine) string {
+	if udsvm.Spec.WindowsProfile != nil {
+		switch udsvm.Spec.WindowsProfile.ProvisioningMode {
+		case "iso", "clone":
+			return udsvm.Spec.WindowsProfile.ProvisioningMode
+		}
+	}
+	if udsvm.Spec.Disk.SourceType == "dataSource" {
+		return "clone"
+	}
+	return "iso"
+}
+
+// BuildWindowsAutounattendXML generates a zero-touch Unattend answer file for Windows Setup (NIST 800-53 AC-3, IA-5).
+// In "clone" mode (generalized Golden Image), it omits the windowsPE disk-wipe pass and skips runtime qemu-ga
+// installation when injectVirtioWinISO is false.
 func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPassword string) string {
 	if adminPassword == "" {
 		adminPassword = "P@ssw0rd!" + udsvm.Name
 	}
 	computerName := SanitizeNetBIOSName(udsvm.Name)
+	if udsvm.Labels["uds.dev/pool"] != "" {
+		computerName = SanitizePoolNetBIOSName(udsvm.Name)
+	}
+	mode := ResolveWindowsProvisioningMode(udsvm)
+
+	injectVirtio := true
+	if udsvm.Spec.WindowsProfile != nil && udsvm.Spec.WindowsProfile.InjectVirtioWinISO != nil {
+		injectVirtio = *udsvm.Spec.WindowsProfile.InjectVirtioWinISO
+	}
+
+	firstLogonBlock := ""
+	if injectVirtio {
+		firstLogonBlock = `
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\,E:\,F:\ -Filter 'qemu-ga-x86_64.msi' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }"</CommandLine>
+          <Description>Install QEMU Guest Agent</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>`
+	}
+
+	if mode == "clone" {
+		return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>%s</ComputerName>
+      <TimeZone>UTC</TimeZone>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>%s</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>%s
+    </component>
+  </settings>
+</unattend>`, computerName, adminPassword, firstLogonBlock)
+	}
 
 	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -355,17 +457,10 @@ func BuildWindowsAutounattendXML(udsvm *udsv1alpha1.UDSVirtualMachine, adminPass
           <Value>%s</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
-      </UserAccounts>
-      <FirstLogonCommands>
-        <SynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <CommandLine>powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path D:\,E:\,F:\ -Filter 'qemu-ga-x86_64.msi' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Start-Process msiexec.exe -ArgumentList ('/i', $_.FullName, '/qn', '/norestart') -Wait }"</CommandLine>
-          <Description>Install QEMU Guest Agent</Description>
-        </SynchronousCommand>
-      </FirstLogonCommands>
+      </UserAccounts>%s
     </component>
   </settings>
-</unattend>`, computerName, adminPassword)
+</unattend>`, computerName, adminPassword, firstLogonBlock)
 }
 
 // BuildDataVolume builds a CDI DataVolume resource with cryptographic checksum validation
@@ -538,8 +633,17 @@ func BuildVirtualMachine(udsvm *udsv1alpha1.UDSVirtualMachine) *unstructured.Uns
 		},
 	}
 
-	if isISO {
-		// When booting from an installation ISO, attach an installation target hard drive for the guest OS
+	hasPersistentInstallDisk := false
+	for _, dd := range udsvm.Spec.DataDisks {
+		if dd.Name == "installdisk" {
+			hasPersistentInstallDisk = true
+			break
+		}
+	}
+
+	if isISO && !hasPersistentInstallDisk {
+		// When booting from an installation ISO without a persistent installdisk dataDisk,
+		// attach an ephemeral installation target hard drive for the guest OS.
 		disks = append(disks, map[string]interface{}{
 			"name": "installdisk",
 			"disk": map[string]interface{}{

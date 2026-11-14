@@ -1,9 +1,9 @@
 component-definition:
   metadata:
     title: UDS Virtual Machine Operator Component Definition
-    version: 0.5.1
+    version: 0.6.0-sec
     oscal-version: 1.1.2
-    last-modified: 2026-11-14T00:00:00Z
+    last-modified: 2026-11-14T19:55:00Z
     parties:
       - name: Defense Unicorns Unicorn Delivery Service (UDS) Virtualization Team
         type: organization
@@ -43,6 +43,18 @@ component-definition:
               description: Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
               links:
                 - href: '#8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f'
+                  rel: lula
+            - uuid: 867d9faf-c4dc-474d-891b-11d729c4c88f
+              control-id: cm-6
+              description: Configuration Settings - Operator Deployment Hardened Pod & Container SecurityContext (Non-Root, ReadOnlyRootFS, RuntimeDefault Seccomp, Drop ALL Capabilities)
+              links:
+                - href: '#0a4eff73-df14-42ec-a9d3-978a041a2af8'
+                  rel: lula
+            - uuid: cbcf15ab-eb23-41ce-ad3e-6a782b66960c
+              control-id: si-2
+              description: Flaw Remediation - Patched Distroless Operator Workload Running Remediated v0.6.0-sec Build
+              links:
+                - href: '#0d4788a1-4387-4fbe-8411-22116950ba1f'
                   rel: lula
   back-matter:
     resources:
@@ -120,6 +132,13 @@ component-definition:
                   resource: datavolumes
                   namespaces:
                   - default
+              - name: golden_dvs
+                resource-rule:
+                  group: cdi.kubevirt.io
+                  version: v1beta1
+                  resource: datavolumes
+                  namespaces:
+                  - uds-golden-images
             type: kubernetes
           metadata:
             name: si-7-validation
@@ -133,6 +152,13 @@ component-definition:
                   dv := input.vm_dvs[_]
                   dv.metadata.name == "tactical-sensor-vm-dv"
                   dv.status.phase == "Succeeded"
+                }
+
+                validate {
+                  dv := input.golden_dvs[_]
+                  dv.metadata.namespace == "uds-golden-images"
+                  dv.status.phase == "Succeeded"
+                  dv.spec.source.upload.checksum != ""
                 }
             type: opa
       - uuid: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f
@@ -171,5 +197,71 @@ component-definition:
                   sec.metadata.name == "tactical-windows-vm-admin-credentials"
                   raw := base64.decode(sec.data.password)
                   count(raw) >= 24
+                }
+            type: opa
+      - uuid: 0a4eff73-df14-42ec-a9d3-978a041a2af8
+        title: cm-6-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: operator_deployments
+                resource-rule:
+                  group: apps
+                  version: v1
+                  resource: deployments
+                  namespaces:
+                  - uds-system
+            type: kubernetes
+          metadata:
+            name: cm-6-validation
+            uuid: 0a4eff73-df14-42ec-a9d3-978a041a2af8
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  dep := input.operator_deployments[_]
+                  dep.metadata.name == "uds-vm-operator"
+                  dep.spec.template.spec.securityContext.runAsNonRoot == true
+                  dep.spec.template.spec.securityContext.seccompProfile.type == "RuntimeDefault"
+                  c := dep.spec.template.spec.containers[_]
+                  c.name == "manager"
+                  c.securityContext.allowPrivilegeEscalation == false
+                  c.securityContext.readOnlyRootFilesystem == true
+                  c.securityContext.runAsNonRoot == true
+                  c.securityContext.capabilities.drop[_] == "ALL"
+                }
+            type: opa
+      - uuid: 0d4788a1-4387-4fbe-8411-22116950ba1f
+        title: si-2-validation
+        description: |
+          domain:
+            kubernetes-spec:
+              resources:
+              - name: operator_deployments
+                resource-rule:
+                  group: apps
+                  version: v1
+                  resource: deployments
+                  namespaces:
+                  - uds-system
+            type: kubernetes
+          metadata:
+            name: si-2-validation
+            uuid: 0d4788a1-4387-4fbe-8411-22116950ba1f
+          provider:
+            opa-spec:
+              rego: |
+                package validate
+
+                validate {
+                  dep := input.operator_deployments[_]
+                  dep.metadata.name == "uds-vm-operator"
+                  c := dep.spec.template.spec.containers[_]
+                  c.name == "manager"
+                  contains(c.image, "v0.6.0-sec")
+                  dep.status.readyReplicas >= 1
                 }
             type: opa

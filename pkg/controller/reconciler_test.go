@@ -1090,4 +1090,123 @@ func TestReconciler_InvalidDataDiskSize(t *testing.T) {
 	}
 }
 
+func TestWindowsProvisioningModesAndCloneXML(t *testing.T) {
+	falseVal := false
+
+	// 1. Explicit clone mode with slipstreamed VirtIO/qemu-ga (injectVirtioWinISO: false)
+	cloneVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "win2022-clone-01",
+			Namespace: "default",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType: "windows",
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				ProvisioningMode:   "clone",
+				InjectVirtioWinISO: &falseVal,
+			},
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType:     "upload",
+				Format:         "qcow2",
+				DataSourceName: "windows-server-2022-v1",
+			},
+		},
+	}
+
+	if got := ResolveWindowsProvisioningMode(cloneVM); got != "clone" {
+		t.Fatalf("expected resolved mode 'clone', got %q", got)
+	}
+	cloneXML := BuildWindowsAutounattendXML(cloneVM, "CloneP@ssw0rd!2026")
+	if strings.Contains(cloneXML, `pass="windowsPE"`) || strings.Contains(cloneXML, "<WillWipeDisk>") {
+		t.Errorf("clone mode XML must not contain windowsPE or WillWipeDisk:\n%s", cloneXML)
+	}
+	if strings.Contains(cloneXML, "qemu-ga-x86_64.msi") {
+		t.Errorf("clone mode with injectVirtioWinISO=false must skip runtime qemu-ga msiexec:\n%s", cloneXML)
+	}
+	if !strings.Contains(cloneXML, `pass="specialize"`) || !strings.Contains(cloneXML, `pass="oobeSystem"`) {
+		t.Errorf("clone mode XML missing specialize or oobeSystem pass:\n%s", cloneXML)
+	}
+
+	// 2. Auto mode with dataSource resolves to clone
+	autoDS := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "win2022-ds", Namespace: "default"},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType:         "windows",
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{ProvisioningMode: "auto"},
+			Disk:           udsv1alpha1.DiskSpec{SourceType: "dataSource", DataSourceName: "win2022"},
+		},
+	}
+	if got := ResolveWindowsProvisioningMode(autoDS); got != "clone" {
+		t.Errorf("expected auto+dataSource to resolve to 'clone', got %q", got)
+	}
+
+	// 3. Explicit iso mode emits windowsPE
+	isoVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "win2022-iso", Namespace: "default"},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType:         "windows",
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{ProvisioningMode: "iso"},
+			Disk:           udsv1alpha1.DiskSpec{SourceType: "upload", Format: "iso"},
+		},
+	}
+	if got := ResolveWindowsProvisioningMode(isoVM); got != "iso" {
+		t.Errorf("expected explicit 'iso' mode, got %q", got)
+	}
+	isoXML := BuildWindowsAutounattendXML(isoVM, "IsoP@ssw0rd!2026")
+	if !strings.Contains(isoXML, `pass="windowsPE"`) || !strings.Contains(isoXML, "<WillWipeDisk>true</WillWipeDisk>") {
+		t.Errorf("iso mode XML missing windowsPE or WillWipeDisk:\n%s", isoXML)
+	}
+}
+
+func TestSanitizeNetBIOSName_PoolUniqueness(t *testing.T) {
+	r0 := SanitizePoolNetBIOSName("win2022-app-pool-a1b2c3d4-0")
+	r1 := SanitizePoolNetBIOSName("win2022-app-pool-a1b2c3d4-1")
+	if len(r0) > 15 || len(r1) > 15 {
+		t.Fatalf("NetBIOS names exceeded 15 chars: %q (%d), %q (%d)", r0, len(r0), r1, len(r1))
+	}
+	if r0 == r1 {
+		t.Errorf("expected distinct NetBIOS names for pool replicas, both got %q", r0)
+	}
+}
+
+func TestWindowsPersistentISOInstallDisk(t *testing.T) {
+	builderVM := &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "win2022-golden-builder",
+			Namespace: "uds-golden-images",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			OSType: "windows",
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType: "upload",
+				Format:     "iso",
+			},
+			DataDisks: []udsv1alpha1.DataDiskSpec{
+				{Name: "installdisk", Size: "40Gi", Bus: "virtio", RetentionPolicy: "Retain"},
+			},
+		},
+	}
+
+	vmObj := BuildVirtualMachine(builderVM)
+	tmplSpec := vmObj.Object["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})
+	volumes := tmplSpec["volumes"].([]interface{})
+
+	var foundPVCInstall bool
+	for _, v := range volumes {
+		vm := v.(map[string]interface{})
+		if _, hasEmpty := vm["emptyDisk"]; hasEmpty {
+			t.Fatalf("expected no ephemeral emptyDisk when persistent installdisk dataDisk is specified")
+		}
+		if vm["name"] == "datadisk-installdisk" {
+			if pvc, ok := vm["persistentVolumeClaim"].(map[string]interface{}); ok {
+				if pvc["claimName"] == "win2022-golden-builder-data-installdisk" {
+					foundPVCInstall = true
+				}
+			}
+		}
+	}
+	if !foundPVCInstall {
+		t.Errorf("expected persistentVolumeClaim volume datadisk-installdisk for Stage 1 ISO builder")
+	}
+}
 

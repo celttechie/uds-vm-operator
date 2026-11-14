@@ -1,5 +1,4 @@
-FROM alpine:3.19
-RUN apk --no-cache add ca-certificates
+FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY bin/uds-vm-operator /manager
 USER 65532:65532

@@ -2,13 +2,485 @@ assessment-results:
   import-ap:
     href: ""
   metadata:
-    last-modified: 2026-11-12T09:36:58.850159121-06:00
+    last-modified: 2026-11-14T13:55:49.601902785-06:00
     oscal-version: 1.1.2
     published: 2026-11-11T16:28:48.438604553-06:00
     remarks: Assessment Results generated from Lula
     title: '[System Name] Security Assessment Results (SAR)'
     version: 0.0.1
   results:
+    - description: Assessment results for performing Validations with Lula version v0.8.0
+      findings:
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 0d3d77f0-0baa-4ec3-aade-14966c7bfdb9
+            Access Enforcement - Cloud-Init Hardened Guest Security (Disabled SSH Password & Disabled Root)
+          related-observations:
+            - observation-uuid: d37f5ff4-459b-4dbf-9403-bdfdf56dcfd2
+          target:
+            status:
+              state: satisfied
+            target-id: ac-3
+            type: objective-id
+          title: 'Validation Result - Control: ac-3'
+          uuid: dbd816e1-131f-4100-b155-5e38514a7319
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 867d9faf-c4dc-474d-891b-11d729c4c88f
+            Configuration Settings - Operator Deployment Hardened Pod & Container SecurityContext (Non-Root, ReadOnlyRootFS, RuntimeDefault Seccomp, Drop ALL Capabilities)
+          related-observations:
+            - observation-uuid: 54e04191-8d1d-4b6f-a4b6-adc19c58a0fe
+          target:
+            status:
+              state: satisfied
+            target-id: cm-6
+            type: objective-id
+          title: 'Validation Result - Control: cm-6'
+          uuid: 6eac675d-34a2-4259-ab15-e88a8a398602
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
+            Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
+          related-observations:
+            - observation-uuid: 49573437-db01-461e-a027-b5a40f2c26f9
+          target:
+            status:
+              state: satisfied
+            target-id: ia-5
+            type: objective-id
+          title: 'Validation Result - Control: ia-5'
+          uuid: d8715b8b-187a-4eee-ba44-1e11534480f2
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 3c744348-c2e7-48f1-a822-4cda54fc0845
+            Boundary Protection - Default-Deny Zero-Trust Network Policy with Restricted DNS Egress
+          related-observations:
+            - observation-uuid: 774171bc-365b-4825-8c46-c05754bf652d
+          target:
+            status:
+              state: satisfied
+            target-id: sc-7
+            type: objective-id
+          title: 'Validation Result - Control: sc-7'
+          uuid: 89ed2f2d-353a-442d-8619-91a770c70477
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: cbcf15ab-eb23-41ce-ad3e-6a782b66960c
+            Flaw Remediation - Patched Distroless Operator Workload Running Remediated v0.6.0-sec Build
+          related-observations:
+            - observation-uuid: 7fedc021-36f0-45bf-9f0e-b148affb5523
+          target:
+            status:
+              state: satisfied
+            target-id: si-2
+            type: objective-id
+          title: 'Validation Result - Control: si-2'
+          uuid: b2d314de-5d9b-4382-a6d3-6566772c1ba3
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: fe6f31c2-86f6-4f89-9b2e-b8f1fb47d4a7
+            Software and Information Integrity - Cryptographic SHA-256 Upload Digest Verification (CDI PR
+          related-observations:
+            - observation-uuid: 0b639ef7-1326-43c9-ab72-69dccf320c24
+          target:
+            status:
+              state: satisfied
+            target-id: si-7
+            type: objective-id
+          title: 'Validation Result - Control: si-7'
+          uuid: e9e01d6a-3333-4033-9110-58f93691b278
+      observations:
+        - collected: 2026-11-14T13:55:49.396930994-06:00
+          description: |
+            [TEST]: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f - ia-5-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 49573437-db01-461e-a027-b5a40f2c26f9
+        - collected: 2026-11-14T13:55:49.41296724-06:00
+          description: |
+            [TEST]: 0a4eff73-df14-42ec-a9d3-978a041a2af8 - cm-6-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 54e04191-8d1d-4b6f-a4b6-adc19c58a0fe
+        - collected: 2026-11-14T13:55:49.426966353-06:00
+          description: |
+            [TEST]: 0d4788a1-4387-4fbe-8411-22116950ba1f - si-2-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 7fedc021-36f0-45bf-9f0e-b148affb5523
+        - collected: 2026-11-14T13:55:49.454207582-06:00
+          description: |
+            [TEST]: ada6226f-8d7f-4b8c-9bea-90606455e273 - ac-3-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: d37f5ff4-459b-4dbf-9403-bdfdf56dcfd2
+        - collected: 2026-11-14T13:55:49.510525584-06:00
+          description: |
+            [TEST]: a93c8860-4430-4f65-9c8f-68faaef48c77 - sc-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 774171bc-365b-4825-8c46-c05754bf652d
+        - collected: 2026-11-14T13:55:49.575925163-06:00
+          description: |
+            [TEST]: 50e0667d-80d9-4a3c-9307-a2deed25ffa7 - si-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 0b639ef7-1326-43c9-ab72-69dccf320c24
+      props:
+        - name: threshold
+          ns: https://docs.lula.dev/oscal/ns
+          value: "false"
+        - name: target
+          ns: https://docs.lula.dev/oscal/ns
+          value: https://github.com/usnistgov/oscal-content/blob/master/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+      reviewed-controls:
+        control-selections:
+          - description: Controls Assessed by Lula
+            include-controls:
+              - control-id: ac-3
+              - control-id: cm-6
+              - control-id: ia-5
+              - control-id: sc-7
+              - control-id: si-2
+              - control-id: si-7
+        description: Controls validated
+        remarks: Validation performed may indicate full or partial satisfaction
+      start: 2026-11-14T13:55:49.576392207-06:00
+      title: Lula Validation Result
+      uuid: 5abbee79-5985-4170-8d9b-518e3b6d3c40
+    - description: Assessment results for performing Validations with Lula version v0.8.0
+      findings:
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 0d3d77f0-0baa-4ec3-aade-14966c7bfdb9
+            Access Enforcement - Cloud-Init Hardened Guest Security (Disabled SSH Password & Disabled Root)
+          related-observations:
+            - observation-uuid: e8e44314-1153-4489-befb-07e5c784552e
+          target:
+            status:
+              state: satisfied
+            target-id: ac-3
+            type: objective-id
+          title: 'Validation Result - Control: ac-3'
+          uuid: 6cf3df3e-7595-4862-ad24-92f4edc9d1d1
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
+            Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
+          related-observations:
+            - observation-uuid: d240864e-181d-4a5e-9ae6-381806a6be39
+          target:
+            status:
+              state: satisfied
+            target-id: ia-5
+            type: objective-id
+          title: 'Validation Result - Control: ia-5'
+          uuid: c1bd3def-92a6-443e-948a-282530e7dd0f
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 3c744348-c2e7-48f1-a822-4cda54fc0845
+            Boundary Protection - Default-Deny Zero-Trust Network Policy with Restricted DNS Egress
+          related-observations:
+            - observation-uuid: a5b0de1d-5438-4dc6-a5a8-09e6727c3c7b
+          target:
+            status:
+              state: satisfied
+            target-id: sc-7
+            type: objective-id
+          title: 'Validation Result - Control: sc-7'
+          uuid: b666762e-0913-4c2f-a8c5-6a43f70bc917
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: fe6f31c2-86f6-4f89-9b2e-b8f1fb47d4a7
+            Software and Information Integrity - Cryptographic SHA-256 Upload Digest Verification (CDI PR
+          related-observations:
+            - observation-uuid: 95179470-6b1b-4590-bc61-098c72174c04
+          target:
+            status:
+              state: satisfied
+            target-id: si-7
+            type: objective-id
+          title: 'Validation Result - Control: si-7'
+          uuid: 4cd2ae47-fc1f-4a8d-9724-e6f74d8e935d
+      observations:
+        - collected: 2026-11-14T13:47:20.566118335-06:00
+          description: |
+            [TEST]: a93c8860-4430-4f65-9c8f-68faaef48c77 - sc-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: a5b0de1d-5438-4dc6-a5a8-09e6727c3c7b
+        - collected: 2026-11-14T13:47:20.602447884-06:00
+          description: |
+            [TEST]: 50e0667d-80d9-4a3c-9307-a2deed25ffa7 - si-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 95179470-6b1b-4590-bc61-098c72174c04
+        - collected: 2026-11-14T13:47:20.635705078-06:00
+          description: |
+            [TEST]: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f - ia-5-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: d240864e-181d-4a5e-9ae6-381806a6be39
+        - collected: 2026-11-14T13:47:20.697810599-06:00
+          description: |
+            [TEST]: ada6226f-8d7f-4b8c-9bea-90606455e273 - ac-3-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: e8e44314-1153-4489-befb-07e5c784552e
+      props:
+        - name: threshold
+          ns: https://docs.lula.dev/oscal/ns
+          value: "false"
+        - name: target
+          ns: https://docs.lula.dev/oscal/ns
+          value: https://github.com/usnistgov/oscal-content/blob/master/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+      reviewed-controls:
+        control-selections:
+          - description: Controls Assessed by Lula
+            include-controls:
+              - control-id: ac-3
+              - control-id: ia-5
+              - control-id: sc-7
+              - control-id: si-7
+        description: Controls validated
+        remarks: Validation performed may indicate full or partial satisfaction
+      start: 2026-11-14T13:47:20.698063133-06:00
+      title: Lula Validation Result
+      uuid: 86060562-0e6b-4ace-b697-18de6623b03a
+    - description: Assessment results for performing Validations with Lula version v0.8.0
+      findings:
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 0d3d77f0-0baa-4ec3-aade-14966c7bfdb9
+            Access Enforcement - Cloud-Init Hardened Guest Security (Disabled SSH Password & Disabled Root)
+          related-observations:
+            - observation-uuid: ef28ba3b-76b8-4295-bfd0-e8255c6e5fd1
+          target:
+            status:
+              state: satisfied
+            target-id: ac-3
+            type: objective-id
+          title: 'Validation Result - Control: ac-3'
+          uuid: 38e23533-9cf4-43ef-b991-b4800a8d8c7c
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
+            Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
+          related-observations:
+            - observation-uuid: 1201d677-a4e9-4f79-908c-d140f609e50a
+          target:
+            status:
+              state: satisfied
+            target-id: ia-5
+            type: objective-id
+          title: 'Validation Result - Control: ia-5'
+          uuid: ffb4eb69-8cd5-4b85-b8ad-74686bdc68d0
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 3c744348-c2e7-48f1-a822-4cda54fc0845
+            Boundary Protection - Default-Deny Zero-Trust Network Policy with Restricted DNS Egress
+          related-observations:
+            - observation-uuid: 3b7b112f-708d-42ba-b711-b5c78a22b72f
+          target:
+            status:
+              state: satisfied
+            target-id: sc-7
+            type: objective-id
+          title: 'Validation Result - Control: sc-7'
+          uuid: 1bf1750a-7e93-4bf3-beed-058bcc934a0d
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: fe6f31c2-86f6-4f89-9b2e-b8f1fb47d4a7
+            Software and Information Integrity - Cryptographic SHA-256 Upload Digest Verification (CDI PR
+          related-observations:
+            - observation-uuid: 353375be-8d40-473f-a6f7-55f0eba8a76a
+          target:
+            status:
+              state: satisfied
+            target-id: si-7
+            type: objective-id
+          title: 'Validation Result - Control: si-7'
+          uuid: 87e90b87-0562-4c51-81cf-43b4eba0c80c
+      observations:
+        - collected: 2026-11-14T12:28:25.306736064-06:00
+          description: |
+            [TEST]: ada6226f-8d7f-4b8c-9bea-90606455e273 - ac-3-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: ef28ba3b-76b8-4295-bfd0-e8255c6e5fd1
+        - collected: 2026-11-14T12:28:25.320823132-06:00
+          description: |
+            [TEST]: a93c8860-4430-4f65-9c8f-68faaef48c77 - sc-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 3b7b112f-708d-42ba-b711-b5c78a22b72f
+        - collected: 2026-11-14T12:28:25.390810862-06:00
+          description: |
+            [TEST]: 50e0667d-80d9-4a3c-9307-a2deed25ffa7 - si-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 353375be-8d40-473f-a6f7-55f0eba8a76a
+        - collected: 2026-11-14T12:28:25.427793073-06:00
+          description: |
+            [TEST]: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f - ia-5-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 1201d677-a4e9-4f79-908c-d140f609e50a
+      props:
+        - name: threshold
+          ns: https://docs.lula.dev/oscal/ns
+          value: "false"
+        - name: target
+          ns: https://docs.lula.dev/oscal/ns
+          value: https://github.com/usnistgov/oscal-content/blob/master/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+      reviewed-controls:
+        control-selections:
+          - description: Controls Assessed by Lula
+            include-controls:
+              - control-id: ac-3
+              - control-id: ia-5
+              - control-id: sc-7
+              - control-id: si-7
+        description: Controls validated
+        remarks: Validation performed may indicate full or partial satisfaction
+      start: 2026-11-14T12:28:25.428668076-06:00
+      title: Lula Validation Result
+      uuid: 17cadb77-da08-4131-a1e7-6c31732a8998
+    - description: Assessment results for performing Validations with Lula version v0.8.0
+      findings:
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 0d3d77f0-0baa-4ec3-aade-14966c7bfdb9
+            Access Enforcement - Cloud-Init Hardened Guest Security (Disabled SSH Password & Disabled Root)
+          related-observations:
+            - observation-uuid: c298b33d-6b91-4bf0-b9db-a6cced850476
+          target:
+            status:
+              state: satisfied
+            target-id: ac-3
+            type: objective-id
+          title: 'Validation Result - Control: ac-3'
+          uuid: 8021d760-7d65-4972-926e-fae30eb05551
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 7b8c9d0e-1f2a-4b3c-8d5e-6f7a8b9c0d1e
+            Authenticator Management - Cryptographic Key-Based Auth (Linux) & High-Entropy Credentials (Windows)
+          related-observations:
+            - observation-uuid: eed1a1d9-cbdc-42a4-ac88-02d4a88385e9
+          target:
+            status:
+              state: satisfied
+            target-id: ia-5
+            type: objective-id
+          title: 'Validation Result - Control: ia-5'
+          uuid: 2f839ada-12d0-4738-9da6-e271a78f4485
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: 3c744348-c2e7-48f1-a822-4cda54fc0845
+            Boundary Protection - Default-Deny Zero-Trust Network Policy with Restricted DNS Egress
+          related-observations:
+            - observation-uuid: d5f29154-632f-438f-957d-5697f0a3fa80
+          target:
+            status:
+              state: satisfied
+            target-id: sc-7
+            type: objective-id
+          title: 'Validation Result - Control: sc-7'
+          uuid: 5a2d22bb-055f-4570-bf8a-23fc96f3036c
+        - description: |
+            Control Implementation: 0dfab2ab-cd51-480e-95d2-be764904defe / Implemented Requirement: fe6f31c2-86f6-4f89-9b2e-b8f1fb47d4a7
+            Software and Information Integrity - Cryptographic SHA-256 Upload Digest Verification (CDI PR
+          related-observations:
+            - observation-uuid: 71e1c26e-9aa4-48c7-9c4b-1b093fb684f7
+          target:
+            status:
+              state: satisfied
+            target-id: si-7
+            type: objective-id
+          title: 'Validation Result - Control: si-7'
+          uuid: 9200fb01-53d4-4973-9339-a90944a466c9
+      observations:
+        - collected: 2026-11-14T11:41:47.993445907-06:00
+          description: |
+            [TEST]: ada6226f-8d7f-4b8c-9bea-90606455e273 - ac-3-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: c298b33d-6b91-4bf0-b9db-a6cced850476
+        - collected: 2026-11-14T11:41:48.005347691-06:00
+          description: |
+            [TEST]: a93c8860-4430-4f65-9c8f-68faaef48c77 - sc-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: d5f29154-632f-438f-957d-5697f0a3fa80
+        - collected: 2026-11-14T11:41:48.037020984-06:00
+          description: |
+            [TEST]: 50e0667d-80d9-4a3c-9307-a2deed25ffa7 - si-7-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: 71e1c26e-9aa4-48c7-9c4b-1b093fb684f7
+        - collected: 2026-11-14T11:41:48.060799758-06:00
+          description: |
+            [TEST]: 8c9d0e1f-2a3b-4c4d-9e6f-7a8b9c0d1e2f - ia-5-validation
+          methods:
+            - TEST
+          relevant-evidence:
+            - description: |
+                Result: satisfied
+          uuid: eed1a1d9-cbdc-42a4-ac88-02d4a88385e9
+      props:
+        - name: threshold
+          ns: https://docs.lula.dev/oscal/ns
+          value: "false"
+        - name: target
+          ns: https://docs.lula.dev/oscal/ns
+          value: https://github.com/usnistgov/oscal-content/blob/master/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+      reviewed-controls:
+        control-selections:
+          - description: Controls Assessed by Lula
+            include-controls:
+              - control-id: ac-3
+              - control-id: ia-5
+              - control-id: sc-7
+              - control-id: si-7
+        description: Controls validated
+        remarks: Validation performed may indicate full or partial satisfaction
+      start: 2026-11-14T11:41:48.0610662-06:00
+      title: Lula Validation Result
+      uuid: 378ff5bb-251c-45f6-982a-09ea55ab3a76
     - description: Assessment results for performing Validations with Lula version unset
       findings:
         - description: |
@@ -873,4 +1345,4 @@ assessment-results:
       start: 2026-11-11T16:28:48.438591514-06:00
       title: Lula Validation Result
       uuid: f774f0cc-421c-4378-9270-1efa0ebc3aa1
-  uuid: 99ec5953-24c2-4fc4-a81a-be79d7db5c06
+  uuid: b3554139-9e85-4260-bdc8-ba17b785ad5b

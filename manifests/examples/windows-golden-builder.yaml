@@ -1,0 +1,51 @@
+# Stage 1: In-Cluster Windows Server 2022 ISO Builder VM
+# Installs Windows Server 2022 from a vendor-signed ISO (SI-7 checksum verified)
+# onto a persistent `installdisk` PVC that can be promoted to a CDI DataSource.
+apiVersion: uds.dev/v1alpha1
+kind: UDSVirtualMachine
+metadata:
+  name: win2022-golden-builder
+  namespace: uds-golden-images
+  labels:
+    uds.dev/golden-image-builder: "true"
+    uds.dev/nist-control: "SI-7"
+spec:
+  osType: windows
+  cpus: 4
+  memory: 8Gi
+  runStrategy: Always
+  windowsProfile:
+    diskBus: virtio
+    nicModel: virtio
+    provisioningMode: iso
+    injectVirtioWinISO: true
+    enableHyperVEnlightenments: true
+    enableSecureBootTPM: true
+  disk:
+    sourceType: upload
+    format: iso
+    virtualSizeBytes: 5044094976
+    checksum: sha256:3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325
+  dataDisks:
+    - name: installdisk
+      size: 40Gi
+      bus: virtio
+      retentionPolicy: Retain
+  securityProfile:
+    zeroTrustNetwork: true
+---
+# Once sysprep /generalize /oobe /shutdown completes on win2022-golden-builder,
+# promote its persistent `win2022-golden-builder-data-installdisk` PVC to a DataSource:
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataSource
+metadata:
+  name: windows-server-2022-v1
+  namespace: uds-golden-images
+  labels:
+    uds.dev/golden-image: "true"
+    uds.dev/os-family: windows-server-2022
+spec:
+  source:
+    pvc:
+      name: win2022-golden-builder-data-installdisk
+      namespace: uds-golden-images
