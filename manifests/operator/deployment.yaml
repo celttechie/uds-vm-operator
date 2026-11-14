@@ -17,10 +17,10 @@ metadata:
   name: uds-vm-operator-role
 rules:
   - apiGroups: ["uds.dev"]
-    resources: ["udsvirtualmachines"]
+    resources: ["udsvirtualmachines", "udsvirtualmachinepools"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["uds.dev"]
-    resources: ["udsvirtualmachines/status"]
+    resources: ["udsvirtualmachines/status", "udsvirtualmachinepools/status"]
     verbs: ["get", "update", "patch"]
   - apiGroups: ["kubevirt.io"]
     resources: ["virtualmachines", "virtualmachineinstances"]
@@ -28,6 +28,9 @@ rules:
   - apiGroups: ["cdi.kubevirt.io"]
     resources: ["datavolumes"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes/source"]
+    verbs: ["create"]
   - apiGroups: [""]
     resources: ["secrets", "persistentvolumeclaims", "configmaps", "events"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

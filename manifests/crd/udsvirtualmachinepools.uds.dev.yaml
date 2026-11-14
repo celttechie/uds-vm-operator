@@ -1,0 +1,107 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: udsvirtualmachinepools.uds.dev
+  labels:
+    uds.dev/managed-by: uds-vm-operator
+spec:
+  group: uds.dev
+  names:
+    kind: UDSVirtualMachinePool
+    listKind: UDSVirtualMachinePoolList
+    plural: udsvirtualmachinepools
+    singular: udsvirtualmachinepool
+    shortNames:
+      - udsvmpool
+      - udsvmpools
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyReplicas
+        - name: Updated
+          type: integer
+          jsonPath: .status.updatedReplicas
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Revision
+          type: string
+          jsonPath: .status.currentRevision
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - template
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 0
+                  default: 1
+                selector:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                strategy:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: ["RollingUpdate", "Recreate"]
+                      default: "RollingUpdate"
+                    rollingUpdate:
+                      type: object
+                      properties:
+                        maxSurge:
+                          type: integer
+                          minimum: 0
+                          default: 1
+                        maxUnavailable:
+                          type: integer
+                          minimum: 0
+                          default: 0
+                template:
+                  type: object
+                  required:
+                    - spec
+                  properties:
+                    metadata:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    spec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                replicas:
+                  type: integer
+                readyReplicas:
+                  type: integer
+                updatedReplicas:
+                  type: integer
+                currentRevision:
+                  type: string
+                phase:
+                  type: string
+                message:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
