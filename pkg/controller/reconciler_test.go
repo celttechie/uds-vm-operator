@@ -1,12 +1,20 @@
 package controller
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	udsv1alpha1 "github.com/celttechie/uds-vm-operator/pkg/apis/uds/v1alpha1"
 )
@@ -33,6 +41,39 @@ func getSampleUDSVM() *udsv1alpha1.UDSVirtualMachine {
 				ZeroTrustNetwork:    &trueVal,
 				DisallowSSHPassword: &trueVal,
 				FIPSMode:            &trueVal,
+			},
+		},
+	}
+}
+
+func getSampleWindowsUDSVM() *udsv1alpha1.UDSVirtualMachine {
+	trueVal := true
+	return &udsv1alpha1.UDSVirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tactical-windows-vm",
+			Namespace: "default",
+			UID:       "22222222-3333-4444-5555-666666666666",
+		},
+		Spec: udsv1alpha1.UDSVirtualMachineSpec{
+			CPUs:        4,
+			Memory:      "8Gi",
+			RunStrategy: "Always",
+			OSType:      "windows",
+			WindowsProfile: &udsv1alpha1.WindowsProfileSpec{
+				DiskBus:                    "virtio",
+				NICModel:                   "virtio",
+				InjectVirtioWinISO:         &trueVal,
+				EnableHyperVEnlightenments: &trueVal,
+				EnableSecureBootTPM:        &trueVal,
+			},
+			Disk: udsv1alpha1.DiskSpec{
+				SourceType:       "upload",
+				Format:           "raw",
+				VirtualSizeBytes: 5347737600, // 5100 MiB
+				Checksum:         "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			},
+			SecurityProfile: udsv1alpha1.SecurityProfileSpec{
+				ZeroTrustNetwork: &trueVal,
 			},
 		},
 	}
@@ -555,4 +596,466 @@ func TestPrometheusComplianceMetrics(t *testing.T) {
 		t.Errorf("expected uds_vm_storage_overhead_ratio metric family in registry")
 	}
 }
+
+func TestCalculatePVCSizeMiB_EdgeCases(t *testing.T) {
+	// Zero bytes should return 1Mi floor
+	if got := CalculatePVCSizeMiB(0); got != "1Mi" {
+		t.Errorf("CalculatePVCSizeMiB(0) = %s, want 1Mi", got)
+	}
+
+	// Negative bytes should return 1Mi floor
+	if got := CalculatePVCSizeMiB(-100); got != "1Mi" {
+		t.Errorf("CalculatePVCSizeMiB(-100) = %s, want 1Mi", got)
+	}
+
+	// 1 byte should return 1Mi
+	if got := CalculatePVCSizeMiB(1); got != "1Mi" {
+		t.Errorf("CalculatePVCSizeMiB(1) = %s, want 1Mi", got)
+	}
+
+	// 100 MiB: 100 * 1.06 = 106Mi
+	if got := CalculatePVCSizeMiB(100 * 1024 * 1024); got != "106Mi" {
+		t.Errorf("CalculatePVCSizeMiB(100MiB) = %s, want 106Mi", got)
+	}
+}
+
+func newTestReconcilerScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(s)
+	_ = udsv1alpha1.AddToScheme(s)
+	_ = corev1.AddToScheme(s)
+	_ = networkingv1.AddToScheme(s)
+	return s
+}
+
+func TestReconciler_Reconcile_NotFound(t *testing.T) {
+	s := newTestReconcilerScheme()
+	client := fake.NewClientBuilder().WithScheme(s).Build()
+
+	r := &Reconciler{
+		Client:       client,
+		Scheme:       s,
+		ReconcilerID: "controller-go-test",
+	}
+
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "nonexistent-vm",
+			Namespace: "default",
+		},
+	}
+
+	res, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error reconciling non-existent VM: %v", err)
+	}
+	if res.Requeue || res.RequeueAfter != 0 {
+		t.Errorf("expected no requeue on not-found, got: %v", res)
+	}
+}
+
+func TestReconciler_Reconcile_LinuxVM(t *testing.T) {
+	s := newTestReconcilerScheme()
+	udsvm := getSampleUDSVM()
+
+	client := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(udsvm).
+		WithStatusSubresource(udsvm).
+		Build()
+
+	r := &Reconciler{
+		Client:       client,
+		Scheme:       s,
+		ReconcilerID: "controller-go-test",
+	}
+
+	ctx := context.Background()
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      udsvm.Name,
+			Namespace: udsvm.Namespace,
+		},
+	}
+
+	res, err := r.Reconcile(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error reconciling Linux VM: %v", err)
+	}
+	if !res.Requeue && res.RequeueAfter == 0 {
+		// Because DataVolume is in WaitingForUpload, reconciler queues periodic check
+	}
+
+	// 1. Verify NetworkPolicy was created
+	netpol := &networkingv1.NetworkPolicy{}
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-netpol", Namespace: udsvm.Namespace}, netpol)
+	if err != nil {
+		t.Fatalf("expected NetworkPolicy to be created: %v", err)
+	}
+	if netpol.Labels["uds.dev/nist-control"] != "SC-7" {
+		t.Errorf("expected SC-7 label, got %s", netpol.Labels["uds.dev/nist-control"])
+	}
+
+	// 2. Verify Cloud-Init Secret was created
+	secret := &corev1.Secret{}
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-cloudinit", Namespace: udsvm.Namespace}, secret)
+	if err != nil {
+		t.Fatalf("expected Cloud-Init secret to be created: %v", err)
+	}
+	if len(secret.Data["userdata"]) == 0 && len(secret.StringData["userdata"]) == 0 {
+		t.Errorf("expected userdata in secret Data or StringData")
+	}
+
+	// 3. Verify DataVolume was created
+	dv := &unstructured.Unstructured{}
+	dv.SetAPIVersion("cdi.kubevirt.io/v1beta1")
+	dv.SetKind("DataVolume")
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-dv", Namespace: udsvm.Namespace}, dv)
+	if err != nil {
+		t.Fatalf("expected DataVolume to be created: %v", err)
+	}
+
+	// 4. Verify VirtualMachine was created
+	vm := &unstructured.Unstructured{}
+	vm.SetAPIVersion("kubevirt.io/v1")
+	vm.SetKind("VirtualMachine")
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name, Namespace: udsvm.Namespace}, vm)
+	if err != nil {
+		t.Fatalf("expected VirtualMachine to be created: %v", err)
+	}
+
+	// 5. Test idempotence: second reconcile should update cleanly without error
+	_, err = r.Reconcile(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error during second idempotent reconcile: %v", err)
+	}
+}
+
+func TestReconciler_Reconcile_WindowsVM(t *testing.T) {
+	s := newTestReconcilerScheme()
+	udsvm := getSampleWindowsUDSVM()
+
+	client := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(udsvm).
+		WithStatusSubresource(udsvm).
+		Build()
+
+	r := &Reconciler{
+		Client:       client,
+		Scheme:       s,
+		ReconcilerID: "controller-go-test",
+	}
+
+	ctx := context.Background()
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      udsvm.Name,
+			Namespace: udsvm.Namespace,
+		},
+	}
+
+	_, err := r.Reconcile(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error reconciling Windows VM: %v", err)
+	}
+
+	// Verify Admin Credentials Secret was automatically generated (NIST IA-5)
+	credSecret := &corev1.Secret{}
+	credSecretName := udsvm.Name + "-admin-credentials"
+	err = client.Get(ctx, types.NamespacedName{Name: credSecretName, Namespace: udsvm.Namespace}, credSecret)
+	if err != nil {
+		t.Fatalf("expected generated admin credentials secret %q: %v", credSecretName, err)
+	}
+	pw := string(credSecret.Data["password"])
+	if pw == "" {
+		pw = credSecret.StringData["password"]
+	}
+	if len(pw) < 24 {
+		t.Errorf("expected high-entropy password of >= 24 chars, got %d", len(pw))
+	}
+
+	// Verify Autounattend.xml Secret was created
+	sysprepSecret := &corev1.Secret{}
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-cloudinit", Namespace: udsvm.Namespace}, sysprepSecret)
+	if err != nil {
+		t.Fatalf("expected Sysprep secret to be created: %v", err)
+	}
+	if len(sysprepSecret.Data["autounattend.xml"]) == 0 && len(sysprepSecret.StringData["autounattend.xml"]) == 0 {
+		t.Errorf("expected autounattend.xml in Sysprep secret")
+	}
+
+	// Verify Windows VM created with Hyper-V and firmware
+	vm := &unstructured.Unstructured{}
+	vm.SetAPIVersion("kubevirt.io/v1")
+	vm.SetKind("VirtualMachine")
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name, Namespace: udsvm.Namespace}, vm)
+	if err != nil {
+		t.Fatalf("expected Windows VirtualMachine to be created: %v", err)
+	}
+}
+
+func TestBuildDataVolume_DataSource(t *testing.T) {
+	udsvm := getSampleUDSVM()
+	udsvm.Spec.Disk.SourceType = "dataSource"
+	udsvm.Spec.Disk.DataSourceName = "ubuntu-2204-golden"
+	udsvm.Spec.Disk.DataSourceNamespace = "uds-golden-images"
+	udsvm.Spec.Disk.VirtualSizeBytes = 20 * 1024 * 1024 * 1024 // 20 GiB
+
+	dv := BuildDataVolume(udsvm)
+	spec, ok := dv.Object["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected spec in DataVolume")
+	}
+
+	// Verify sourceRef is populated instead of source
+	if _, hasSource := spec["source"]; hasSource {
+		t.Errorf("expected no source block when sourceType is dataSource")
+	}
+
+	sourceRef, ok := spec["sourceRef"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sourceRef block in DataVolume spec")
+	}
+
+	if sourceRef["kind"] != "DataSource" {
+		t.Errorf("expected sourceRef kind DataSource, got %v", sourceRef["kind"])
+	}
+	if sourceRef["name"] != "ubuntu-2204-golden" {
+		t.Errorf("expected sourceRef name ubuntu-2204-golden, got %v", sourceRef["name"])
+	}
+	if sourceRef["namespace"] != "uds-golden-images" {
+		t.Errorf("expected sourceRef namespace uds-golden-images, got %v", sourceRef["namespace"])
+	}
+
+	// Verify PVC size request
+	storage, ok := spec["storage"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected storage block in DataVolume spec")
+	}
+	res, ok := storage["resources"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected resources block in storage spec")
+	}
+	req, ok := res["requests"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected requests block in resources")
+	}
+	// 20Gi * 1.06 = 21709Mi
+	if req["storage"] != "21709Mi" {
+		t.Errorf("expected storage request 21709Mi, got %v", req["storage"])
+	}
+}
+
+func TestBuildVirtualMachine_WithDataDisks(t *testing.T) {
+	udsvm := getSampleUDSVM()
+	udsvm.Spec.DataDisks = []udsv1alpha1.DataDiskSpec{
+		{
+			Name:            "db-data",
+			Size:            "50Gi",
+			Bus:             "virtio",
+			RetentionPolicy: "Retain",
+		},
+		{
+			Name:            "log-data",
+			Size:            "10Gi",
+			Bus:             "sata",
+			PVCName:         "custom-log-pvc",
+			RetentionPolicy: "Delete",
+		},
+	}
+
+	vm := BuildVirtualMachine(udsvm)
+	spec := vm.Object["spec"].(map[string]interface{})
+	template := spec["template"].(map[string]interface{})
+	vmspec := template["spec"].(map[string]interface{})
+	domain := vmspec["domain"].(map[string]interface{})
+	devices := domain["devices"].(map[string]interface{})
+	disks := devices["disks"].([]interface{})
+	volumes := vmspec["volumes"].([]interface{})
+
+	// Check disks array
+	foundDBDisk := false
+	foundLogDisk := false
+	for _, d := range disks {
+		dMap := d.(map[string]interface{})
+		if dMap["name"] == "datadisk-db-data" {
+			foundDBDisk = true
+			diskObj := dMap["disk"].(map[string]interface{})
+			if diskObj["bus"] != "virtio" {
+				t.Errorf("expected bus virtio for db-data disk, got %v", diskObj["bus"])
+			}
+		}
+		if dMap["name"] == "datadisk-log-data" {
+			foundLogDisk = true
+			diskObj := dMap["disk"].(map[string]interface{})
+			if diskObj["bus"] != "sata" {
+				t.Errorf("expected bus sata for log-data disk, got %v", diskObj["bus"])
+			}
+		}
+	}
+	if !foundDBDisk {
+		t.Errorf("datadisk-db-data not found in VM disks")
+	}
+	if !foundLogDisk {
+		t.Errorf("datadisk-log-data not found in VM disks")
+	}
+
+	// Check volumes array
+	foundDBVol := false
+	foundLogVol := false
+	for _, v := range volumes {
+		vMap := v.(map[string]interface{})
+		if vMap["name"] == "datadisk-db-data" {
+			foundDBVol = true
+			pvcObj := vMap["persistentVolumeClaim"].(map[string]interface{})
+			// Should default to <vm-name>-data-<disk-name>
+			expectedClaim := udsvm.Name + "-data-db-data"
+			if pvcObj["claimName"] != expectedClaim {
+				t.Errorf("expected claimName %s, got %v", expectedClaim, pvcObj["claimName"])
+			}
+		}
+		if vMap["name"] == "datadisk-log-data" {
+			foundLogVol = true
+			pvcObj := vMap["persistentVolumeClaim"].(map[string]interface{})
+			// Should use explicit PVCName
+			if pvcObj["claimName"] != "custom-log-pvc" {
+				t.Errorf("expected claimName custom-log-pvc, got %v", pvcObj["claimName"])
+			}
+		}
+	}
+	if !foundDBVol {
+		t.Errorf("datadisk-db-data volume not found in VM volumes")
+	}
+	if !foundLogVol {
+		t.Errorf("datadisk-log-data volume not found in VM volumes")
+	}
+}
+
+func TestBuildDataDiskPVC_RetentionPolicy(t *testing.T) {
+	udsvm := getSampleUDSVM()
+
+	// Retain disk: NO OwnerReference
+	retainDisk := &udsv1alpha1.DataDiskSpec{
+		Name:            "stateful-db",
+		Size:            "100Gi",
+		RetentionPolicy: "Retain",
+	}
+	retainPVC := BuildDataDiskPVC(udsvm, retainDisk)
+	if len(retainPVC.OwnerReferences) != 0 {
+		t.Errorf("expected 0 OwnerReferences for Retain disk, got %d", len(retainPVC.OwnerReferences))
+	}
+	if retainPVC.Labels["uds.dev/retention-policy"] != "Retain" {
+		t.Errorf("expected retention label 'Retain', got %q", retainPVC.Labels["uds.dev/retention-policy"])
+	}
+
+	// Delete disk: OwnerReference present
+	deleteDisk := &udsv1alpha1.DataDiskSpec{
+		Name:            "ephemeral-scratch",
+		Size:            "20Gi",
+		RetentionPolicy: "Delete",
+	}
+	deletePVC := BuildDataDiskPVC(udsvm, deleteDisk)
+	if len(deletePVC.OwnerReferences) != 1 {
+		t.Errorf("expected 1 OwnerReference for Delete disk, got %d", len(deletePVC.OwnerReferences))
+	}
+	if deletePVC.OwnerReferences[0].Name != udsvm.Name {
+		t.Errorf("expected OwnerReference name %s, got %s", udsvm.Name, deletePVC.OwnerReferences[0].Name)
+	}
+	if deletePVC.Labels["uds.dev/retention-policy"] != "Delete" {
+		t.Errorf("expected retention label 'Delete', got %q", deletePVC.Labels["uds.dev/retention-policy"])
+	}
+}
+
+func TestReconcile_DataSource_And_DataDisks(t *testing.T) {
+	s := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(s)
+	_ = udsv1alpha1.AddToScheme(s)
+
+	udsvm := getSampleUDSVM()
+	udsvm.Name = "tactical-cluster-db"
+	udsvm.Spec.Disk.SourceType = "dataSource"
+	udsvm.Spec.Disk.DataSourceName = "rocky9-golden"
+	udsvm.Spec.Disk.DataSourceNamespace = "uds-golden-images"
+	udsvm.Spec.DataDisks = []udsv1alpha1.DataDiskSpec{
+		{
+			Name:            "pgdata",
+			Size:            "30Gi",
+			RetentionPolicy: "Retain",
+		},
+		{
+			Name:            "wal",
+			Size:            "10Gi",
+			RetentionPolicy: "Delete",
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(udsvm).
+		WithStatusSubresource(udsvm).
+		Build()
+
+	r := &Reconciler{
+		Client:       client,
+		Scheme:       s,
+		ReconcilerID: "controller-go-test",
+	}
+
+	ctx := context.Background()
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      udsvm.Name,
+			Namespace: udsvm.Namespace,
+		},
+	}
+
+	_, err := r.Reconcile(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error reconciling VM with DataSource and DataDisks: %v", err)
+	}
+
+	// 1. Verify DataVolume created with sourceRef
+	dv := &unstructured.Unstructured{}
+	dv.SetAPIVersion("cdi.kubevirt.io/v1beta1")
+	dv.SetKind("DataVolume")
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-dv", Namespace: udsvm.Namespace}, dv)
+	if err != nil {
+		t.Fatalf("expected DataVolume to be created: %v", err)
+	}
+	spec := dv.Object["spec"].(map[string]interface{})
+	sourceRef := spec["sourceRef"].(map[string]interface{})
+	if sourceRef["name"] != "rocky9-golden" {
+		t.Errorf("expected sourceRef rocky9-golden, got %v", sourceRef["name"])
+	}
+
+	// 2. Verify secondary PVCs created
+	pgPVC := &corev1.PersistentVolumeClaim{}
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-data-pgdata", Namespace: udsvm.Namespace}, pgPVC)
+	if err != nil {
+		t.Fatalf("expected pgdata PVC to be created: %v", err)
+	}
+	if len(pgPVC.OwnerReferences) != 0 {
+		t.Errorf("expected Retain pgdata PVC to have 0 OwnerReferences, got %d", len(pgPVC.OwnerReferences))
+	}
+
+	walPVC := &corev1.PersistentVolumeClaim{}
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name + "-data-wal", Namespace: udsvm.Namespace}, walPVC)
+	if err != nil {
+		t.Fatalf("expected wal PVC to be created: %v", err)
+	}
+	if len(walPVC.OwnerReferences) != 1 {
+		t.Errorf("expected Delete wal PVC to have 1 OwnerReference, got %d", len(walPVC.OwnerReferences))
+	}
+
+	// 3. Verify VirtualMachine created with all disks
+	vm := &unstructured.Unstructured{}
+	vm.SetAPIVersion("kubevirt.io/v1")
+	vm.SetKind("VirtualMachine")
+	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name, Namespace: udsvm.Namespace}, vm)
+	if err != nil {
+		t.Fatalf("expected VirtualMachine to be created: %v", err)
+	}
+}
+
 

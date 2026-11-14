@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +11,7 @@ import (
 )
 
 var (
-	version = "v0.3.0"
+	version = "v0.4.0"
 	commit  = "none"
 	date    = "unknown"
 
@@ -51,6 +50,8 @@ func newPrepCmd() *cobra.Command {
 		vmName         string
 		osType         string
 		isGoldenImage  bool
+		dataSourceName string
+		dataSourceNs   string
 		outputManifest string
 		generateZarf   bool
 		jsonOutput     bool
@@ -89,7 +90,13 @@ UDSVirtualMachine YAML and Zarf component definitions.`,
 			fmt.Printf("Air-Gap Verified:    PASSED (Standalone, 0 external backing references)\n")
 			fmt.Println("==================================================================")
 
-			manifestYAML := cli.GenerateUDSVirtualMachineYAML(info, vmName, osType, isGoldenImage)
+			manifestYAML := cli.GenerateUDSVirtualMachineYAMLWithDataSource(info, vmName, osType, isGoldenImage, dataSourceName, dataSourceNs)
+
+			if isGoldenImage {
+				dsYAML := cli.GenerateCDIDataSourceYAML(info, dataSourceName, dataSourceNs)
+				fmt.Println("\n--- CDI DataSource & DataVolume Manifest ---")
+				fmt.Print(dsYAML)
+			}
 
 			if outputManifest != "" {
 				if err := os.WriteFile(outputManifest, []byte(manifestYAML), 0644); err != nil {
@@ -112,7 +119,9 @@ UDSVirtualMachine YAML and Zarf component definitions.`,
 
 	cmd.Flags().StringVar(&vmName, "name", "", "Name of the UDSVirtualMachine (defaults to sanitized filename)")
 	cmd.Flags().StringVar(&osType, "os", "linux", "Target operating system (linux or windows)")
-	cmd.Flags().BoolVar(&isGoldenImage, "golden-image", false, "Generate manifest configured for CDI golden-image PVC cloning")
+	cmd.Flags().BoolVar(&isGoldenImage, "golden-image", false, "Generate manifest configured for CDI golden-image DataSource cloning")
+	cmd.Flags().StringVar(&dataSourceName, "data-source-name", "", "Name of the target CDI DataSource for fast cloning")
+	cmd.Flags().StringVar(&dataSourceNs, "data-source-ns", "", "Namespace of the target CDI DataSource (defaults to 'uds-golden-images')")
 	cmd.Flags().StringVarP(&outputManifest, "output", "o", "", "File path to write generated UDSVirtualMachine YAML")
 	cmd.Flags().BoolVar(&generateZarf, "zarf", false, "Generate Zarf component definition for air-gap package packaging")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output disk inspection metadata in JSON format")
@@ -135,7 +144,7 @@ func newPowerCmd() *cobra.Command {
 				ns = "default"
 			}
 
-			ctx := context.Background()
+			ctx := cmd.Context()
 			msg, err := cli.PowerAction(ctx, kubeconfig, ns, vmName, action)
 			if err != nil {
 				return err
@@ -154,7 +163,7 @@ func newInventoryCmd() *cobra.Command {
 		Short: "List all managed UDSVirtualMachine workloads and their health",
 		Long:  `Queries the cluster and presents a real-time tabular status of all UDSVirtualMachine resources.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
+			ctx := cmd.Context()
 			return cli.ListInventory(ctx, kubeconfig, namespace)
 		},
 	}

@@ -29,12 +29,40 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 // DiskSpec defines the VM root disk image and cryptographic verification parameters.
 type DiskSpec struct {
-	SourceType       string `json:"sourceType"`
-	HTTPURL          string `json:"httpUrl,omitempty"`
-	Format           string `json:"format,omitempty"`
-	VirtualSizeBytes int64  `json:"virtualSizeBytes"`
-	Checksum         string `json:"checksum"`
+	SourceType          string `json:"sourceType"`
+	HTTPURL             string `json:"httpUrl,omitempty"`
+	DataSourceName      string `json:"dataSourceName,omitempty"`
+	DataSourceNamespace string `json:"dataSourceNamespace,omitempty"`
+	Format              string `json:"format,omitempty"`
+	VirtualSizeBytes    int64  `json:"virtualSizeBytes,omitempty"`
+	Checksum            string `json:"checksum,omitempty"`
+	StorageClassName    string `json:"storageClassName,omitempty"`
+}
+
+// DataDiskSpec defines secondary persistent data disks attached to the VM.
+type DataDiskSpec struct {
+	Name             string `json:"name"`
+	Size             string `json:"size"`
+	Bus              string `json:"bus,omitempty"`
 	StorageClassName string `json:"storageClassName,omitempty"`
+	PVCName          string `json:"pvcName,omitempty"`
+	RetentionPolicy  string `json:"retentionPolicy,omitempty"`
+	MountPath        string `json:"mountPath,omitempty"`
+}
+
+// DeepCopyInto copies all properties of DataDiskSpec.
+func (in *DataDiskSpec) DeepCopyInto(out *DataDiskSpec) {
+	*out = *in
+}
+
+// DeepCopy copies the receiver, creating a new DataDiskSpec.
+func (in *DataDiskSpec) DeepCopy() *DataDiskSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(DataDiskSpec)
+	in.DeepCopyInto(out)
+	return out
 }
 
 // SecurityProfileSpec defines NIST 800-53 / DISA STIG hardening controls.
@@ -96,6 +124,7 @@ type UDSVirtualMachineSpec struct {
 	OSType          string              `json:"osType,omitempty"`
 	WindowsProfile  *WindowsProfileSpec `json:"windowsProfile,omitempty"`
 	Disk            DiskSpec            `json:"disk"`
+	DataDisks       []DataDiskSpec      `json:"dataDisks,omitempty"`
 	SecurityProfile SecurityProfileSpec `json:"securityProfile,omitempty"`
 }
 
@@ -134,6 +163,12 @@ func (in *UDSVirtualMachine) DeepCopyInto(out *UDSVirtualMachine) {
 	out.Spec = in.Spec
 	if in.Spec.WindowsProfile != nil {
 		out.Spec.WindowsProfile = in.Spec.WindowsProfile.DeepCopy()
+	}
+	if in.Spec.DataDisks != nil {
+		out.Spec.DataDisks = make([]DataDiskSpec, len(in.Spec.DataDisks))
+		for i := range in.Spec.DataDisks {
+			in.Spec.DataDisks[i].DeepCopyInto(&out.Spec.DataDisks[i])
+		}
 	}
 	if in.Spec.SecurityProfile.ZeroTrustNetwork != nil {
 		v := *in.Spec.SecurityProfile.ZeroTrustNetwork

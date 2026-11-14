@@ -108,6 +108,11 @@ func InspectDiskImage(path string) (*DiskInfo, error) {
 
 // GenerateUDSVirtualMachineYAML outputs a declarative Kubernetes manifest for the inspected image.
 func GenerateUDSVirtualMachineYAML(info *DiskInfo, vmName, osType string, isGoldenImage bool) string {
+	return GenerateUDSVirtualMachineYAMLWithDataSource(info, vmName, osType, isGoldenImage, "", "")
+}
+
+// GenerateUDSVirtualMachineYAMLWithDataSource outputs a declarative Kubernetes manifest targeting an optional DataSource.
+func GenerateUDSVirtualMachineYAMLWithDataSource(info *DiskInfo, vmName, osType string, isGoldenImage bool, dsName, dsNamespace string) string {
 	if vmName == "" {
 		base := strings.TrimSuffix(info.Filename, filepath.Ext(info.Filename))
 		vmName = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
@@ -117,8 +122,16 @@ func GenerateUDSVirtualMachineYAML(info *DiskInfo, vmName, osType string, isGold
 	}
 
 	sourceType := "upload"
-	if isGoldenImage {
-		sourceType = "pvc"
+	dataSourceLines := ""
+	if isGoldenImage || dsName != "" {
+		sourceType = "dataSource"
+		if dsName == "" {
+			dsName = vmName + "-golden"
+		}
+		dataSourceLines = fmt.Sprintf("    dataSourceName: %s\n", dsName)
+		if dsNamespace != "" {
+			dataSourceLines += fmt.Sprintf("    dataSourceNamespace: %s\n", dsNamespace)
+		}
 	}
 
 	return fmt.Sprintf(`apiVersion: uds.dev/v1alpha1
@@ -139,14 +152,60 @@ spec:
   runStrategy: Always
   disk:
     sourceType: %s
-    format: %s
+%s    format: %s
     virtualSizeBytes: %d
     checksum: %s
   securityProfile:
     zeroTrustNetwork: true
     disallowSSHPassword: true
     fipsMode: true
-`, vmName, vmName, osType, sourceType, info.Format, info.VirtualSizeBytes, info.ChecksumSHA256)
+`, vmName, vmName, osType, sourceType, dataSourceLines, info.Format, info.VirtualSizeBytes, info.ChecksumSHA256)
+}
+
+// GenerateCDIDataSourceYAML outputs the central CDI DataVolume and DataSource manifests for the golden image.
+func GenerateCDIDataSourceYAML(info *DiskInfo, sourceName, namespace string) string {
+	if sourceName == "" {
+		base := strings.TrimSuffix(info.Filename, filepath.Ext(info.Filename))
+		sourceName = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
+	}
+	if namespace == "" {
+		namespace = "uds-golden-images"
+	}
+
+	return fmt.Sprintf(`apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    uds.dev/golden-image: "true"
+    uds.dev/nist-control: "SI-7"
+  annotations:
+    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+spec:
+  source:
+    upload:
+      checksum: %s
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: %s
+---
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataSource
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    uds.dev/golden-image: "true"
+spec:
+  source:
+    pvc:
+      name: %s
+      namespace: %s
+`, sourceName, namespace, info.ChecksumSHA256, info.CalculatedPVCSize, sourceName, namespace, sourceName, namespace)
 }
 
 // GenerateZarfComponentYAML outputs the Zarf component snippet for offline package inclusion.
