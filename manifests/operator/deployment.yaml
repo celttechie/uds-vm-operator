@@ -71,9 +71,16 @@ spec:
         uds.dev/component: controller
     spec:
       serviceAccountName: uds-vm-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/celttechie/uds-vm-operator:v0.5.1
+          image: ghcr.io/celttechie/uds-vm-operator:v0.6.0-sec
           command:
             - /manager
           resources:
@@ -87,6 +94,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL

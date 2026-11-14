@@ -99,4 +99,7 @@ auditpol.exe /set /category:"System" /success:enable /failure:enable | Out-Null
 
 Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
 
+# Suppress "Do you want to allow your PC to be discoverable" flyout on first logon
+New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" -Force | Out-Null
+
 Write-Host "=== DISA STIG baseline applied successfully (ready for sysprep /generalize) ==="
