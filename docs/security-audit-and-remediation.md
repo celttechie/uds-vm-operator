@@ -74,4 +74,18 @@ A full-stack vulnerability and configuration audit was executed using **Trivy v0
    - `HKLM:\SOFTWARE\Microsoft\ServerManager\DoNotOpenServerManagerAtLogon`: `1`
    - `net accounts`: `Minimum password length: 14`, `Lockout threshold: 3`
 3. **Go Unit Tests:** `go test -count=1 -race ./...` → all 4 test packages passed (`cmd/uds-vmctl`, `pkg/apis/uds/v1alpha1`, `pkg/cli`, `pkg/controller`).
-4. **Lula OSCAL Assessment:** `make lula-validate` → `si-7`, `ia-5`, `ac-3`, `sc-7` all **`satisfied`** ([assessment-results.yaml](file:///home/bjarrett/Projects/uds-vm-operator/compliance/assessment-results.yaml)).
+4. **Lula OSCAL Assessment:** `make lula-validate` → `si-7`, `ia-5`, `ac-3`, `sc-7`, `cm-6`, `si-2` all **`satisfied`** ([assessment-results.yaml](file:///home/bjarrett/Projects/uds-vm-operator/compliance/assessment-results.yaml)).
+
+---
+
+## 4. DoD IL-5 cATO Evidence & POA&M Justifications
+
+For **DoD Impact Level 5 (IL-5)** Continuous ATO, residual scanner findings that are inherent to Kubernetes operator functionality are documented with compensating controls:
+
+| Finding ID | Resource | Justification / Compensating Control |
+| :--- | :--- | :--- |
+| **`KSV-0041`** | `ClusterRole/uds-vm-operator-role` (`secrets`) | Operator generates per-VM Cloud-Init NoCloud `Secret`s (`<vm>-cloudinit`) and high-entropy Windows credential `Secret`s (`<vm>-admin-credentials`). Mitigated via `OwnerReference` lifecycle binding, non-root distroless execution, and zero-trust `NetworkPolicy` isolation. |
+| **`KSV-0049`** | `ClusterRole/uds-vm-operator-role` (`configmaps`) | Operator generates per-VM `Autounattend.xml` `ConfigMap`s (`<vm>-autounattend`) containing no credentials (passwords injected from `Secret`s or isolated per-VM provisioning). |
+| **`KSV-0056`** | `ClusterRole/uds-vm-operator-role` (`networkpolicies`) | Operator enforces NIST `SC-7` default-deny egress/ingress by reconciling `<vm>-netpol` `NetworkPolicy` objects for every managed VM. |
+| **`KSV-0125`** | `Deployment/uds-vm-operator` (`ghcr.io/...`) | In disconnected IL-5 enclaves, Zarf rewrites the image reference to the authenticated in-cluster Zarf OCI registry (`127.0.0.1:31999/...`) with verified SHA-256 digests and SBOM attestation. |
+
