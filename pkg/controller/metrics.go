@@ -42,6 +42,15 @@ var (
 		},
 		[]string{"status"},
 	)
+
+	// PoolReplicas tracks replica counts by state for UDSVirtualMachinePool fleets.
+	PoolReplicas = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "uds_vm_pool_replicas",
+			Help: "Current replica counts for UDSVirtualMachinePool by state (desired, active, ready, updated, outdated)",
+		},
+		[]string{"pool", "namespace", "state"},
+	)
 )
 
 func init() {
@@ -50,6 +59,7 @@ func init() {
 		StorageOverheadRatio,
 		PhaseStatus,
 		ReconcileTotal,
+		PoolReplicas,
 	)
 }
 
@@ -90,4 +100,13 @@ func RecordStorageMetrics(name, namespace string, virtualSizeBytes, allocatedByt
 		ratio := float64(allocatedBytes) / float64(virtualSizeBytes)
 		StorageOverheadRatio.WithLabelValues(name, namespace).Set(ratio)
 	}
+}
+
+// RecordPoolMetrics updates Prometheus gauges for UDSVirtualMachinePool replica states.
+func RecordPoolMetrics(pool, namespace string, desired, active, ready, updated int32, outdated int) {
+	PoolReplicas.WithLabelValues(pool, namespace, "desired").Set(float64(desired))
+	PoolReplicas.WithLabelValues(pool, namespace, "active").Set(float64(active))
+	PoolReplicas.WithLabelValues(pool, namespace, "ready").Set(float64(ready))
+	PoolReplicas.WithLabelValues(pool, namespace, "updated").Set(float64(updated))
+	PoolReplicas.WithLabelValues(pool, namespace, "outdated").Set(float64(outdated))
 }

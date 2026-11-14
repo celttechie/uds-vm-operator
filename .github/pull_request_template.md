@@ -20,8 +20,7 @@ Check all applicable controls impacted or verified by this change:
 ## Testing & Verification
 ### Automated Tests
 ```bash
-go test -v -race ./pkg/controller/...
-.venv/bin/pytest -v prototype-kopf/test_operator_kopf.py
+go test -v -race -cover -count=1 ./...
 ```
 
 ### Live Cluster Verification

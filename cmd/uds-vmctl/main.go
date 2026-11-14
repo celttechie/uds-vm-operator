@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	version = "v0.5.0"
+	version = "v0.5.1"
 	commit  = "none"
 	date    = "unknown"
 
@@ -143,13 +143,8 @@ func newPowerCmd() *cobra.Command {
 			action := args[0]
 			vmName := args[1]
 
-			ns := namespace
-			if ns == "" {
-				ns = "default"
-			}
-
 			ctx := cmd.Context()
-			msg, err := cli.PowerAction(ctx, kubeconfig, ns, vmName, action)
+			msg, err := cli.PowerAction(ctx, kubeconfig, namespace, vmName, action)
 			if err != nil {
 				return err
 			}

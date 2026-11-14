@@ -968,9 +968,7 @@ func TestBuildDataDiskPVC_RetentionPolicy(t *testing.T) {
 }
 
 func TestReconcile_DataSource_And_DataDisks(t *testing.T) {
-	s := runtime.NewScheme()
-	_ = clientgoscheme.AddToScheme(s)
-	_ = udsv1alpha1.AddToScheme(s)
+	s := newTestReconcilerScheme()
 
 	udsvm := getSampleUDSVM()
 	udsvm.Name = "tactical-cluster-db"
@@ -1055,6 +1053,40 @@ func TestReconcile_DataSource_And_DataDisks(t *testing.T) {
 	err = client.Get(ctx, types.NamespacedName{Name: udsvm.Name, Namespace: udsvm.Namespace}, vm)
 	if err != nil {
 		t.Fatalf("expected VirtualMachine to be created: %v", err)
+	}
+}
+
+func TestReconciler_InvalidDataDiskSize(t *testing.T) {
+	s := newTestReconcilerScheme()
+	udsvm := getSampleUDSVM()
+	udsvm.Name = "invalid-disk-vm"
+	udsvm.Spec.DataDisks = []udsv1alpha1.DataDiskSpec{
+		{
+			Name: "broken",
+			Size: "not-a-quantity",
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(udsvm).
+		WithStatusSubresource(udsvm).
+		Build()
+
+	r := &Reconciler{
+		Client:       c,
+		Scheme:       s,
+		ReconcilerID: "controller-go-test",
+	}
+
+	_, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: udsvm.Name, Namespace: udsvm.Namespace},
+	})
+	if err == nil {
+		t.Fatalf("expected error for invalid dataDisks[].size, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid dataDisks[0].size") {
+		t.Errorf("expected descriptive invalid size error, got: %v", err)
 	}
 }
 

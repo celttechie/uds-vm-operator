@@ -109,5 +109,7 @@ Detailed architectural specifications, CRD schemas, and decisions are maintained
 - **Zero-Downtime Rolling Fleet Updates (`UDSVirtualMachinePool`, Phase 5C, PR #12):**
   - Added `UDSVirtualMachinePool` (`udsvmpool`) CRD and `PoolReconciler` orchestrating coordinated rolling updates (`maxSurge: 1`, `maxUnavailable: 0`) with deterministic template revision hashing and readiness-gated draining.
   - Formalized Architecture Decision Records in [`docs/adr/`](docs/adr/) (`0001`, `0002`, `0003`).
+- **Release `v0.5.1` Hardening & Observability:**
+  - Added `uds_vm_pool_replicas` Prometheus metrics, `ReconcileTotal{status="error"}` tracking, conflict-safe `PoolReconciler` status updates, safe `resource.ParseQuantity` validation, `SOURCE` column in `uds-vmctl inventory`, and `manifests/examples/tactical-vm-pool.yaml`.
 
 

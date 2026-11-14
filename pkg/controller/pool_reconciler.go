@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -246,16 +248,17 @@ func (r *PoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		readyReason = "PoolReady"
 	}
 
-	pool.Status.Replicas = totalActive
-	pool.Status.ReadyReplicas = readyTotal
-	pool.Status.UpdatedReplicas = int32(len(updatedVMs) + created)
+	newStatus := pool.DeepCopy().Status
+	newStatus.Replicas = totalActive
+	newStatus.ReadyReplicas = readyTotal
+	newStatus.UpdatedReplicas = int32(len(updatedVMs) + created)
 	if len(outdatedVMs) == 0 && deleted > 0 {
-		pool.Status.UpdatedReplicas -= int32(deleted)
+		newStatus.UpdatedReplicas -= int32(deleted)
 	}
-	pool.Status.CurrentRevision = currentRev
-	pool.Status.Phase = phase
-	pool.Status.Message = msg
-	meta.SetStatusCondition(&pool.Status.Conditions, metav1.Condition{
+	newStatus.CurrentRevision = currentRev
+	newStatus.Phase = phase
+	newStatus.Message = msg
+	meta.SetStatusCondition(&newStatus.Conditions, metav1.Condition{
 		Type:               "Ready",
 		Status:             readyCondStatus,
 		Reason:             readyReason,
@@ -263,8 +266,20 @@ func (r *PoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		ObservedGeneration: pool.Generation,
 	})
 
-	if err := r.Status().Update(ctx, &pool); err != nil {
-		return ctrl.Result{}, err
+	RecordPoolMetrics(pool.Name, pool.Namespace, desiredReplicas, totalActive, readyTotal, newStatus.UpdatedReplicas, outdatedRemaining)
+
+	if !reflect.DeepEqual(pool.Status, newStatus) {
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			latest := &udsv1alpha1.UDSVirtualMachinePool{}
+			if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
+				return err
+			}
+			latest.Status = newStatus
+			return r.Status().Update(ctx, latest)
+		})
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if phase != "Ready" {
