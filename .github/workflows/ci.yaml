@@ -94,7 +94,7 @@ jobs:
         run: VERSION=ci-scan make build-image
 
       - name: Run Trivy Filesystem Scan (go.mod HIGH/CRITICAL & Secrets)
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -103,14 +103,14 @@ jobs:
           exit-code: '1'
 
       - name: Run Trivy Container Image Scan (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'ghcr.io/celttechie/uds-vm-operator:ci-scan'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
 
       - name: Generate SPDX SBOM (NIST CM-8)
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'ghcr.io/celttechie/uds-vm-operator:ci-scan'
           format: 'spdx-json'
